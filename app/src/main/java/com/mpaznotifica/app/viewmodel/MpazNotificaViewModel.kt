@@ -1,6 +1,11 @@
+
 package com.mpaznotifica.app.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.mpaznotifica.app.data.local.AppDatabase
+import com.mpaznotifica.app.data.repository.ComunicacionRepository
 import com.mpaznotifica.app.data.MockData
 import com.mpaznotifica.app.model.AlcanceEnvio
 import com.mpaznotifica.app.model.Apoderado
@@ -14,6 +19,8 @@ import com.mpaznotifica.app.model.Usuario
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * ViewModel único, compartido por todas las pantallas (se crea una sola vez en AppNavigation).
@@ -26,7 +33,15 @@ import kotlinx.coroutines.flow.asStateFlow
  *  - enviar un comunicado o cambiar el canal de un apoderado no hace nada,
  *  - los filtros del historial no filtran.
  */
-class MpazNotificaViewModel : ViewModel() {
+class MpazNotificaViewModel(
+    application: Application
+) : AndroidViewModel(application) {
+
+    // Integración inicial de Room con la capa Repository.
+    private val database = AppDatabase.obtenerInstancia(application)
+
+    private val comunicacionRepository =
+        ComunicacionRepository(database.comunicacionDao())
 
     // =====================================================================
     // Módulo "Autenticación y perfiles"
@@ -44,7 +59,6 @@ class MpazNotificaViewModel : ViewModel() {
      * backend que confirme el CITT). Si es correcto: dejar _usuarioActivo y devolver true.
      * Si no: dejar _errorLogin con un mensaje y devolver false.
      */
-
     fun login(usuario: String, clave: String): Boolean {
 
         val correo = usuario.trim()
@@ -78,13 +92,14 @@ class MpazNotificaViewModel : ViewModel() {
         return true
     }
 
-
     /**
      * SOLO PARA DESARROLLO: entra con el usuario de prueba del perfil indicado, sin validar
      * credenciales. TODO(equipo): eliminar esta función y los botones "Modo desarrollo".
      */
     fun entrarModoDesarrollo(perfil: Perfil) {
-        _usuarioActivo.value = MockData.usuarios.first { it.perfil == perfil }
+        _usuarioActivo.value = MockData.usuarios.first {
+            it.perfil == perfil
+        }
         _errorLogin.value = null
     }
 
@@ -105,10 +120,15 @@ class MpazNotificaViewModel : ViewModel() {
     private val _apoderados = MutableStateFlow(MockData.apoderados)
     val apoderados: StateFlow<List<Apoderado>> = _apoderados.asStateFlow()
 
-    fun apoderadoPorId(id: String): Apoderado? = _apoderados.value.find { it.id == id }
+    fun apoderadoPorId(id: String): Apoderado? =
+        _apoderados.value.find { it.id == id }
 
     fun nombresPupilos(apoderado: Apoderado): List<String> =
-        MockData.estudiantes.filter { it.id in apoderado.pupilosIds }.map { "${it.nombreReferencial} (${it.curso})" }
+        MockData.estudiantes
+            .filter { it.id in apoderado.pupilosIds }
+            .map {
+                "${it.nombreReferencial} (${it.curso})"
+            }
 
     // =====================================================================
     // Módulo "Redacción y envío"
@@ -121,40 +141,50 @@ class MpazNotificaViewModel : ViewModel() {
      * distinto al propio (alcance sobre talleres pendiente de confirmar con el CITT).
      * Hoy devuelve los cuatro alcances para cualquier perfil.
      */
+    fun alcancesPermitidos(
+        usuario: Usuario?
+    ): List<AlcanceEnvio> {
 
-    fun alcancesPermitidos(usuario: Usuario?): List<AlcanceEnvio> {
         return when (usuario?.perfil) {
-            Perfil.INSPECTORIA_GENERAL -> AlcanceEnvio.entries.toList()
 
-            Perfil.PROFESOR_JEFE -> listOf(AlcanceEnvio.CURSO)
+            Perfil.INSPECTORIA_GENERAL ->
+                AlcanceEnvio.entries.toList()
+
+            Perfil.PROFESOR_JEFE ->
+                listOf(AlcanceEnvio.CURSO)
 
             else -> emptyList()
         }
     }
-
 
     /**
      * TODO(equipo): devolver solo los tipos de comunicación que el perfil puede emitir.
      * Criterio de éxito del caso: un Profesor/a Jefe no puede enviar circulares institucionales,
      * solo lo referente a su curso. Hoy devuelve todos los tipos.
      */
-    fun tiposPermitidos(usuario: Usuario?): List<TipoComunicacion> = TipoComunicacion.entries.toList()
+    fun tiposPermitidos(
+        usuario: Usuario?
+    ): List<TipoComunicacion> =
+        TipoComunicacion.entries.toList()
 
     /**
      * TODO(equipo): opciones de destino según el alcance, respetando el perfil (por ejemplo, un
      * Profesor/a Jefe solo debería ver su propio curso). Hoy muestra todas las opciones.
      */
-
     fun destinosPara(
         alcance: AlcanceEnvio?,
         usuario: Usuario?
     ): List<String> {
 
-        if (usuario == null || alcance !in alcancesPermitidos(usuario)) {
+        if (
+            usuario == null ||
+            alcance !in alcancesPermitidos(usuario)
+        ) {
             return emptyList()
         }
 
         return when (alcance) {
+
             AlcanceEnvio.CURSO -> {
                 if (usuario.perfil == Perfil.PROFESOR_JEFE) {
                     listOfNotNull(usuario.cursoAsignado)
@@ -163,22 +193,24 @@ class MpazNotificaViewModel : ViewModel() {
                 }
             }
 
-            AlcanceEnvio.TALLER -> talleres.map { it.nombre }
+            AlcanceEnvio.TALLER ->
+                talleres.map { it.nombre }
 
             AlcanceEnvio.APODERADO_INDIVIDUAL ->
-                _apoderados.value.map { it.nombreCompleto }
+                _apoderados.value.map {
+                    it.nombreCompleto
+                }
 
-            AlcanceEnvio.COLEGIO_COMPLETO, null -> emptyList()
+            AlcanceEnvio.COLEGIO_COMPLETO,
+            null -> emptyList()
         }
     }
-
 
     /**
      * TODO(equipo): validar el formulario y devolver los errores por campo: asunto y cuerpo
      * obligatorios, tipo y alcance elegidos, destino obligatorio salvo "colegio completo", y que
      * el alcance esté permitido para el perfil. Hoy devuelve "sin errores" siempre.
      */
-
     fun validarComunicado(
         asunto: String,
         cuerpo: String,
@@ -200,30 +232,42 @@ class MpazNotificaViewModel : ViewModel() {
         }
 
         val errorTipo = when {
-            tipo == null -> "Debe seleccionar un tipo de comunicación"
-            usuario == null -> "Debe iniciar sesión"
+            tipo == null ->
+                "Debe seleccionar un tipo de comunicación"
+
+            usuario == null ->
+                "Debe iniciar sesión"
+
             tipo !in tiposPermitidos(usuario) ->
                 "Este tipo de comunicación no está permitido"
+
             else -> null
         }
 
         val errorAlcance = when {
-            alcance == null -> "Debe seleccionar un alcance"
-            usuario == null -> "Debe iniciar sesión"
+            alcance == null ->
+                "Debe seleccionar un alcance"
+
+            usuario == null ->
+                "Debe iniciar sesión"
+
             alcance !in alcancesPermitidos(usuario) ->
                 "No tiene permiso para utilizar este alcance"
+
             else -> null
         }
 
         val errorDestino = when {
             alcance == null -> null
 
-            usuario == null -> "Debe iniciar sesión"
+            usuario == null ->
+                "Debe iniciar sesión"
 
             alcance !in alcancesPermitidos(usuario) ->
                 "No tiene permiso para este destino"
 
-            alcance == AlcanceEnvio.COLEGIO_COMPLETO -> null
+            alcance == AlcanceEnvio.COLEGIO_COMPLETO ->
+                null
 
             destino.isNullOrBlank() ->
                 "Debe seleccionar un destinatario"
@@ -243,9 +287,13 @@ class MpazNotificaViewModel : ViewModel() {
         )
     }
 
-
-    private val _comunicados = MutableStateFlow(MockData.comunicados)
-    val comunicados: StateFlow<List<Comunicacion>> = _comunicados.asStateFlow()
+    // Room observa los comunicados y mantiene actualizado el historial.
+    val comunicados: StateFlow<List<Comunicacion>> =
+        comunicacionRepository.comunicados.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
 
     private val _envios = MutableStateFlow(MockData.envios)
 
@@ -277,17 +325,25 @@ class MpazNotificaViewModel : ViewModel() {
     // Módulo "Historial y trazabilidad"
     // =====================================================================
 
-    private val _comunicadoSeleccionadoId = MutableStateFlow<String?>(null)
-    val comunicadoSeleccionadoId: StateFlow<String?> = _comunicadoSeleccionadoId.asStateFlow()
+    private val _comunicadoSeleccionadoId =
+        MutableStateFlow<String?>(null)
+
+    val comunicadoSeleccionadoId: StateFlow<String?> =
+        _comunicadoSeleccionadoId.asStateFlow()
 
     fun seleccionarComunicado(id: String?) {
         _comunicadoSeleccionadoId.value = id
     }
 
-    fun comunicadoPorId(id: String?): Comunicacion? = _comunicados.value.find { it.id == id }
+    fun comunicadoPorId(id: String?): Comunicacion? =
+        comunicados.value.find { it.id == id }
 
-    fun enviosDe(comunicacionId: String): List<EnvioDestinatario> =
-        _envios.value.filter { it.comunicacionId == comunicacionId }
+    fun enviosDe(
+        comunicacionId: String
+    ): List<EnvioDestinatario> =
+        _envios.value.filter {
+            it.comunicacionId == comunicacionId
+        }
 
     /**
      * TODO(equipo): filtrar la bitácora por tipo, emisor y rango de fechas (formato AAAA-MM-DD;
@@ -295,7 +351,6 @@ class MpazNotificaViewModel : ViewModel() {
      * RF: "el historial debe poder filtrarse por fecha, tipo de comunicación y emisor".
      * Hoy devuelve la lista completa sin filtrar.
      */
-
     fun historialFiltrado(
         tipo: TipoComunicacion?,
         emisorId: String?,
@@ -303,11 +358,12 @@ class MpazNotificaViewModel : ViewModel() {
         fechaHasta: String?
     ): List<Comunicacion> {
 
-        return _comunicados.value
+        return comunicados.value
             .filter { comunicado ->
 
                 val cumpleTipo =
-                    tipo == null || comunicado.tipo == tipo
+                    tipo == null ||
+                            comunicado.tipo == tipo
 
                 val cumpleEmisor =
                     emisorId.isNullOrBlank() ||
@@ -328,7 +384,9 @@ class MpazNotificaViewModel : ViewModel() {
                         cumpleDesde &&
                         cumpleHasta
             }
-            .sortedByDescending { it.fechaHora }
+            .sortedByDescending {
+                it.fechaHora
+            }
     }
 
     // =====================================================================
@@ -339,7 +397,10 @@ class MpazNotificaViewModel : ViewModel() {
      * TODO(equipo): guardar el canal preferente del apoderado. Criterio de éxito: "emisión
      * simulada inmediata al canal preferente configurado por el apoderado". Hoy no hace nada.
      */
-    fun actualizarCanalPreferente(apoderadoId: String, canal: CanalDespacho) {
+    fun actualizarCanalPreferente(
+        apoderadoId: String,
+        canal: CanalDespacho
+    ) {
         // Sin implementar todavía.
     }
 }
