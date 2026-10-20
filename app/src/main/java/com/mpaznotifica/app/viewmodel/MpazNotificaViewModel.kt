@@ -44,10 +44,40 @@ class MpazNotificaViewModel : ViewModel() {
      * backend que confirme el CITT). Si es correcto: dejar _usuarioActivo y devolver true.
      * Si no: dejar _errorLogin con un mensaje y devolver false.
      */
+
     fun login(usuario: String, clave: String): Boolean {
-        _errorLogin.value = "Login sin implementar — ver TODO(equipo) en MpazNotificaViewModel.login()."
-        return false
+
+        val correo = usuario.trim()
+
+        if (correo.isBlank()) {
+            _usuarioActivo.value = null
+            _errorLogin.value = "Debe ingresar su correo institucional"
+            return false
+        }
+
+        if (clave.isBlank()) {
+            _usuarioActivo.value = null
+            _errorLogin.value = "Debe ingresar su contraseña"
+            return false
+        }
+
+        val usuarioEncontrado = MockData.usuarios.find {
+            it.usuario.equals(correo, ignoreCase = true) &&
+                    it.clave == clave
+        }
+
+        if (usuarioEncontrado == null) {
+            _usuarioActivo.value = null
+            _errorLogin.value = "Correo o contraseña incorrectos"
+            return false
+        }
+
+        _usuarioActivo.value = usuarioEncontrado
+        _errorLogin.value = null
+
+        return true
     }
+
 
     /**
      * SOLO PARA DESARROLLO: entra con el usuario de prueba del perfil indicado, sin validar
@@ -91,7 +121,17 @@ class MpazNotificaViewModel : ViewModel() {
      * distinto al propio (alcance sobre talleres pendiente de confirmar con el CITT).
      * Hoy devuelve los cuatro alcances para cualquier perfil.
      */
-    fun alcancesPermitidos(usuario: Usuario?): List<AlcanceEnvio> = AlcanceEnvio.entries.toList()
+
+    fun alcancesPermitidos(usuario: Usuario?): List<AlcanceEnvio> {
+        return when (usuario?.perfil) {
+            Perfil.INSPECTORIA_GENERAL -> AlcanceEnvio.entries.toList()
+
+            Perfil.PROFESOR_JEFE -> listOf(AlcanceEnvio.CURSO)
+
+            else -> emptyList()
+        }
+    }
+
 
     /**
      * TODO(equipo): devolver solo los tipos de comunicación que el perfil puede emitir.
@@ -104,25 +144,105 @@ class MpazNotificaViewModel : ViewModel() {
      * TODO(equipo): opciones de destino según el alcance, respetando el perfil (por ejemplo, un
      * Profesor/a Jefe solo debería ver su propio curso). Hoy muestra todas las opciones.
      */
-    fun destinosPara(alcance: AlcanceEnvio?, usuario: Usuario?): List<String> = when (alcance) {
-        AlcanceEnvio.CURSO -> cursos
-        AlcanceEnvio.TALLER -> talleres.map { it.nombre }
-        AlcanceEnvio.APODERADO_INDIVIDUAL -> _apoderados.value.map { it.nombreCompleto }
-        AlcanceEnvio.COLEGIO_COMPLETO, null -> emptyList()
+
+    fun destinosPara(
+        alcance: AlcanceEnvio?,
+        usuario: Usuario?
+    ): List<String> {
+
+        if (usuario == null || alcance !in alcancesPermitidos(usuario)) {
+            return emptyList()
+        }
+
+        return when (alcance) {
+            AlcanceEnvio.CURSO -> {
+                if (usuario.perfil == Perfil.PROFESOR_JEFE) {
+                    listOfNotNull(usuario.cursoAsignado)
+                } else {
+                    cursos
+                }
+            }
+
+            AlcanceEnvio.TALLER -> talleres.map { it.nombre }
+
+            AlcanceEnvio.APODERADO_INDIVIDUAL ->
+                _apoderados.value.map { it.nombreCompleto }
+
+            AlcanceEnvio.COLEGIO_COMPLETO, null -> emptyList()
+        }
     }
+
 
     /**
      * TODO(equipo): validar el formulario y devolver los errores por campo: asunto y cuerpo
      * obligatorios, tipo y alcance elegidos, destino obligatorio salvo "colegio completo", y que
      * el alcance esté permitido para el perfil. Hoy devuelve "sin errores" siempre.
      */
+
     fun validarComunicado(
         asunto: String,
         cuerpo: String,
         tipo: TipoComunicacion?,
         alcance: AlcanceEnvio?,
         destino: String?
-    ): ErroresComunicado = ErroresComunicado()
+    ): ErroresComunicado {
+
+        val usuario = _usuarioActivo.value
+
+        val errorAsunto = when {
+            asunto.isBlank() -> "Debe ingresar el asunto"
+            else -> null
+        }
+
+        val errorCuerpo = when {
+            cuerpo.isBlank() -> "Debe ingresar el mensaje"
+            else -> null
+        }
+
+        val errorTipo = when {
+            tipo == null -> "Debe seleccionar un tipo de comunicación"
+            usuario == null -> "Debe iniciar sesión"
+            tipo !in tiposPermitidos(usuario) ->
+                "Este tipo de comunicación no está permitido"
+            else -> null
+        }
+
+        val errorAlcance = when {
+            alcance == null -> "Debe seleccionar un alcance"
+            usuario == null -> "Debe iniciar sesión"
+            alcance !in alcancesPermitidos(usuario) ->
+                "No tiene permiso para utilizar este alcance"
+            else -> null
+        }
+
+        val errorDestino = when {
+            alcance == null -> null
+
+            usuario == null -> "Debe iniciar sesión"
+
+            alcance !in alcancesPermitidos(usuario) ->
+                "No tiene permiso para este destino"
+
+            alcance == AlcanceEnvio.COLEGIO_COMPLETO -> null
+
+            destino.isNullOrBlank() ->
+                "Debe seleccionar un destinatario"
+
+            destino !in destinosPara(alcance, usuario) ->
+                "El destinatario seleccionado no está permitido"
+
+            else -> null
+        }
+
+        return ErroresComunicado(
+            asunto = errorAsunto,
+            cuerpo = errorCuerpo,
+            tipo = errorTipo,
+            alcance = errorAlcance,
+            destino = errorDestino
+        )
+    }
+
 
     private val _comunicados = MutableStateFlow(MockData.comunicados)
     val comunicados: StateFlow<List<Comunicacion>> = _comunicados.asStateFlow()
@@ -175,12 +295,41 @@ class MpazNotificaViewModel : ViewModel() {
      * RF: "el historial debe poder filtrarse por fecha, tipo de comunicación y emisor".
      * Hoy devuelve la lista completa sin filtrar.
      */
+
     fun historialFiltrado(
         tipo: TipoComunicacion?,
         emisorId: String?,
         fechaDesde: String?,
         fechaHasta: String?
-    ): List<Comunicacion> = _comunicados.value
+    ): List<Comunicacion> {
+
+        return _comunicados.value
+            .filter { comunicado ->
+
+                val cumpleTipo =
+                    tipo == null || comunicado.tipo == tipo
+
+                val cumpleEmisor =
+                    emisorId.isNullOrBlank() ||
+                            comunicado.autorId == emisorId
+
+                val fecha = comunicado.fechaHora.take(10)
+
+                val cumpleDesde =
+                    fechaDesde.isNullOrBlank() ||
+                            fecha >= fechaDesde
+
+                val cumpleHasta =
+                    fechaHasta.isNullOrBlank() ||
+                            fecha <= fechaHasta
+
+                cumpleTipo &&
+                        cumpleEmisor &&
+                        cumpleDesde &&
+                        cumpleHasta
+            }
+            .sortedByDescending { it.fechaHora }
+    }
 
     // =====================================================================
     // Canal preferente del apoderado (supuesto pendiente con el CITT)

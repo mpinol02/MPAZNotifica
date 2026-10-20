@@ -1,6 +1,8 @@
+
 package com.mpaznotifica.app.ui.screen.comunicados
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +41,7 @@ import com.mpaznotifica.app.model.TipoComunicacion
 import com.mpaznotifica.app.ui.components.BarraSuperior
 import com.mpaznotifica.app.ui.components.SelectorDesplegable
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Módulo "Redacción y envío": asunto, cuerpo, tipo, alcance y destino, adjunto PDF opcional y
@@ -50,7 +54,10 @@ import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
  *  - enviarComunicado(): hoy no registra ni simula el despacho.
  */
 @Composable
-fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNotificaViewModel) {
+fun RedactarComunicadoScreen(
+    navController: NavHostController,
+    viewModel: MpazNotificaViewModel
+) {
     val usuario by viewModel.usuarioActivo.collectAsState()
 
     var asunto by remember { mutableStateOf("") }
@@ -64,21 +71,35 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
     var confirmando by remember { mutableStateOf(false) }
     var enviado by remember { mutableStateOf(false) }
 
+    // Agregado por el equipo: desplazamiento automático al mostrar errores.
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+
     // Selector de archivos del sistema, solo PDF (RF: adjunto PDF opcional desde el dispositivo).
     // TODO(equipo): si el CITT define un límite de tamaño, validarlo aquí.
-    val selectorPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) adjunto = uri.lastPathSegment ?: "documento.pdf"
+    val selectorPdf = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            adjunto = uri.lastPathSegment ?: "documento.pdf"
+        }
     }
 
-    Scaffold(topBar = { BarraSuperior("Redactar comunicado", navController) }) { padding ->
+    Scaffold(
+        topBar = {
+            BarraSuperior("Redactar comunicado", navController)
+        }
+    ) { padding ->
+
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+
             OutlinedTextField(
                 value = asunto,
                 onValueChange = { asunto = it },
@@ -92,6 +113,7 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
                 },
                 modifier = Modifier.fillMaxWidth()
             )
+
             OutlinedTextField(
                 value = cuerpo,
                 onValueChange = { cuerpo = it },
@@ -114,6 +136,7 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
                 onSeleccion = { tipo = it },
                 error = errores.tipo
             )
+
             SelectorDesplegable(
                 etiqueta = "Alcance (destinatarios)",
                 opciones = viewModel.alcancesPermitidos(usuario),
@@ -125,10 +148,17 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
                 },
                 error = errores.alcance
             )
-            if (alcance != null && alcance != AlcanceEnvio.COLEGIO_COMPLETO) {
+
+            if (
+                alcance != null &&
+                alcance != AlcanceEnvio.COLEGIO_COMPLETO
+            ) {
                 SelectorDesplegable(
                     etiqueta = "Destino",
-                    opciones = viewModel.destinosPara(alcance, usuario),
+                    opciones = viewModel.destinosPara(
+                        alcance,
+                        usuario
+                    ),
                     seleccion = destino,
                     textoDe = { it },
                     onSeleccion = { destino = it },
@@ -137,27 +167,62 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { selectorPdf.launch(arrayOf("application/pdf")) }) {
-                    Text(if (adjunto == null) "Adjuntar PDF (opcional)" else "Cambiar PDF")
+                OutlinedButton(
+                    onClick = {
+                        selectorPdf.launch(
+                            arrayOf("application/pdf")
+                        )
+                    }
+                ) {
+                    Text(
+                        if (adjunto == null)
+                            "Adjuntar PDF (opcional)"
+                        else
+                            "Cambiar PDF"
+                    )
                 }
+
                 if (adjunto != null) {
-                    TextButton(onClick = { adjunto = null }) { Text("Quitar") }
+                    TextButton(
+                        onClick = { adjunto = null }
+                    ) {
+                        Text("Quitar")
+                    }
                 }
             }
-            adjunto?.let { Text("Adjunto: $it", style = MaterialTheme.typography.bodySmall) }
+
+            adjunto?.let {
+                Text(
+                    "Adjunto: $it",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = requiereFirma, onCheckedChange = { requiereFirma = it })
-                Text("Es una autorización que requiere firma física del apoderado")
+                Checkbox(
+                    checked = requiereFirma,
+                    onCheckedChange = {
+                        requiereFirma = it
+                    }
+                )
+                Text(
+                    "Es una autorización que requiere " +
+                            "firma física del apoderado"
+                )
             }
+
             if (requiereFirma) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    colors = CardDefaults.cardColors(
+                        containerColor =
+                            MaterialTheme.colorScheme.tertiaryContainer
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "Rol solo informativo: la app notifica y avisa que la autorización debe firmarse en papel. " +
-                            "No se capturan firmas en la app.",
+                        "Rol solo informativo: la app notifica y avisa " +
+                                "que la autorización debe firmarse en papel. " +
+                                "No se capturan firmas en la app.",
                         modifier = Modifier.padding(12.dp),
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -169,40 +234,97 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 onClick = {
-                    errores = viewModel.validarComunicado(asunto, cuerpo, tipo, alcance, destino)
-                    if (!errores.hayErrores && tipo != null && alcance != null) confirmando = true
+
+                    // PRUEBA TEMPORAL: verificar que el botón responde.
+                    Log.e(
+                        "MPAZ_PRUEBA",
+                        "BOTON ENVIAR PRESIONADO"
+                    )
+
+                    errores = viewModel.validarComunicado(
+                        asunto,
+                        cuerpo,
+                        tipo,
+                        alcance,
+                        destino
+                    )
+
+                    // PRUEBA TEMPORAL: revisar errores del ViewModel.
+                    Log.e(
+                        "MPAZ_PRUEBA",
+                        "Errores: $errores | hayErrores: ${errores.hayErrores}"
+                    )
+
+                    // Agregado por el equipo:
+                    // desplazarse al primer campo si hay errores.
+                    if (errores.hayErrores) {
+                        coroutineScope.launch {
+                            scrollState.animateScrollTo(0)
+                        }
+                    } else if (
+                        tipo != null &&
+                        alcance != null
+                    ) {
+                        confirmando = true
+                    }
                 }
-            ) { Text("Enviar") }
+            ) {
+                Text("Enviar")
+            }
         }
     }
 
     // Confirmación antes de enviar (el comunicado queda registrado de forma inmutable).
     if (confirmando) {
         AlertDialog(
-            onDismissRequest = { confirmando = false },
-            title = { Text("¿Enviar comunicado?") },
-            text = { Text("Una vez enviado, el comunicado queda registrado en el historial y no se puede editar.") },
+            onDismissRequest = {
+                confirmando = false
+            },
+            title = {
+                Text("¿Enviar comunicado?")
+            },
+            text = {
+                Text(
+                    "Una vez enviado, el comunicado queda registrado " +
+                            "en el historial y no se puede editar."
+                )
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    val tipoElegido = tipo
-                    val alcanceElegido = alcance
-                    if (tipoElegido != null && alcanceElegido != null) {
-                        viewModel.enviarComunicado(
-                            asunto = asunto.trim(),
-                            cuerpo = cuerpo.trim(),
-                            tipo = tipoElegido,
-                            alcance = alcanceElegido,
-                            destino = destino,
-                            adjuntoPdfNombre = adjunto,
-                            requiereFirmaFisica = requiereFirma
-                        )
+                TextButton(
+                    onClick = {
+                        val tipoElegido = tipo
+                        val alcanceElegido = alcance
+
+                        if (
+                            tipoElegido != null &&
+                            alcanceElegido != null
+                        ) {
+                            viewModel.enviarComunicado(
+                                asunto = asunto.trim(),
+                                cuerpo = cuerpo.trim(),
+                                tipo = tipoElegido,
+                                alcance = alcanceElegido,
+                                destino = destino,
+                                adjuntoPdfNombre = adjunto,
+                                requiereFirmaFisica = requiereFirma
+                            )
+                        }
+
+                        confirmando = false
+                        enviado = true
                     }
-                    confirmando = false
-                    enviado = true
-                }) { Text("Enviar") }
+                ) {
+                    Text("Enviar")
+                }
             },
             dismissButton = {
-                TextButton(onClick = { confirmando = false }) { Text("Cancelar") }
+                TextButton(
+                    onClick = {
+                        confirmando = false
+                    }
+                ) {
+                    Text("Cancelar")
+                }
             }
         )
     }
@@ -211,13 +333,24 @@ fun RedactarComunicadoScreen(navController: NavHostController, viewModel: MpazNo
     if (enviado) {
         AlertDialog(
             onDismissRequest = { },
-            title = { Text("Comunicado enviado") },
-            text = { Text("El envío se registró en el historial (cuando enviarComunicado() esté implementada).") },
+            title = {
+                Text("Comunicado enviado")
+            },
+            text = {
+                Text(
+                    "El envío se registró en el historial " +
+                            "(cuando enviarComunicado() esté implementada)."
+                )
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    enviado = false
-                    navController.popBackStack()
-                }) { Text("Aceptar") }
+                TextButton(
+                    onClick = {
+                        enviado = false
+                        navController.popBackStack()
+                    }
+                ) {
+                    Text("Aceptar")
+                }
             }
         )
     }
