@@ -6,6 +6,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.withTransaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * Base de datos local de MPAZ Notifica.
@@ -22,9 +24,10 @@ import androidx.room.withTransaction
 @Database(
     entities = [
         ComunicacionEntity::class,
-        EnvioEntity::class
+        EnvioEntity::class,
+        ApoderadoEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -34,6 +37,9 @@ abstract class AppDatabase : RoomDatabase() {
 
     // Permite acceder a los resultados de envíos simulados.
     abstract fun envioDao(): EnvioDao
+
+    // Permite acceder a los apoderados ficticios.
+    abstract fun apoderadoDao(): ApoderadoDao
 
     /**
      * Guarda un comunicado junto con todos sus envíos.
@@ -56,6 +62,32 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /**
+         * Migración de versión 2 a versión 3.
+         *
+         * Incorpora la tabla de apoderados sin eliminar
+         * los comunicados ni envíos existentes.
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+
+            override fun migrate(db: SupportSQLiteDatabase) {
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `apoderados` (
+                        `id` TEXT NOT NULL,
+                        `nombreCompleto` TEXT NOT NULL,
+                        `correo` TEXT NOT NULL,
+                        `telefono` TEXT NOT NULL,
+                        `canalPreferente` TEXT NOT NULL,
+                        `pupilosIds` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         // Crear o recuperar la instancia de Room.
         fun obtenerInstancia(context: Context): AppDatabase {
 
@@ -66,13 +98,10 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mpaz_notifica_db"
                 )
-                    // Solo para desarrollo con datos ficticios.
-                    // Puede borrar datos al reconstruir el esquema.
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_2_3)
                     .build()
 
                 INSTANCE = instancia
-
                 instancia
             }
         }

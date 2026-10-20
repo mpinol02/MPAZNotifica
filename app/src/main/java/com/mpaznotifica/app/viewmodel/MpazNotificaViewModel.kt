@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mpaznotifica.app.data.MockData
 import com.mpaznotifica.app.data.local.AppDatabase
+import com.mpaznotifica.app.data.repository.ApoderadoRepository
 import com.mpaznotifica.app.data.repository.ComunicacionRepository
 import com.mpaznotifica.app.model.AlcanceEnvio
 import com.mpaznotifica.app.model.Apoderado
@@ -19,6 +20,7 @@ import com.mpaznotifica.app.model.Perfil
 import com.mpaznotifica.app.model.TipoComunicacion
 import com.mpaznotifica.app.model.Usuario
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +52,10 @@ class MpazNotificaViewModel(
 
     private val comunicacionRepository =
         ComunicacionRepository(database)
+
+    // Integración del equipo: persistencia de apoderados en Room.
+    private val apoderadoRepository =
+        ApoderadoRepository(database.apoderadoDao())
 
     // =====================================================================
     // Módulo "Autenticación y perfiles"
@@ -126,8 +132,41 @@ class MpazNotificaViewModel(
     val emisores: List<Usuario> = MockData.usuarios
 
     private val _apoderados = MutableStateFlow(MockData.apoderados)
+
     val apoderados: StateFlow<List<Apoderado>> =
         _apoderados.asStateFlow()
+
+    /**
+     * Integración Room:
+     * cargar los apoderados ficticios inicialmente
+     * y observar los cambios desde SQLite.
+     *
+     * Los registros existentes no se sobrescriben,
+     * conservando el canal preferente elegido.
+     */
+    init {
+        viewModelScope.launch {
+            try {
+                apoderadoRepository.inicializar(
+                    MockData.apoderados
+                )
+
+                apoderadoRepository.apoderados.collect { lista ->
+                    _apoderados.value = lista
+                }
+
+            } catch (e: CancellationException) {
+                throw e
+
+            } catch (e: Exception) {
+                Log.e(
+                    "MPAZ_ROOM",
+                    "Error al cargar los apoderados",
+                    e
+                )
+            }
+        }
+    }
 
     fun apoderadoPorId(id: String): Apoderado? =
         _apoderados.value.find { it.id == id }
@@ -155,6 +194,7 @@ class MpazNotificaViewModel(
     ): List<AlcanceEnvio> {
 
         return when (usuario?.perfil) {
+
             Perfil.INSPECTORIA_GENERAL ->
                 AlcanceEnvio.entries.toList()
 
@@ -220,7 +260,9 @@ class MpazNotificaViewModel(
                 talleres.map { it.nombre }
 
             AlcanceEnvio.APODERADO_INDIVIDUAL ->
-                _apoderados.value.map { it.nombreCompleto }
+                _apoderados.value.map {
+                    it.nombreCompleto
+                }
 
             AlcanceEnvio.COLEGIO_COMPLETO,
             null -> emptyList()
@@ -320,8 +362,7 @@ class MpazNotificaViewModel(
             initialValue = emptyList()
         )
 
-    // Datos temporales de ejemplo del proyecto base.
-    // Los envíos nuevos se guardan por separado en Room.
+    // Se conserva esta lista del proyecto base por compatibilidad.
     private val _envios = MutableStateFlow(MockData.envios)
 
     /**
@@ -346,7 +387,7 @@ class MpazNotificaViewModel(
         requiereFirmaFisica: Boolean
     ): Boolean {
 
-        // RF-06: comprobar los permisos antes del guardado.
+        // RF-06: comprobar permisos antes del envío.
         val errores = validarComunicado(
             asunto = asunto,
             cuerpo = cuerpo,
@@ -361,20 +402,22 @@ class MpazNotificaViewModel(
 
         val usuario = _usuarioActivo.value ?: return false
 
-        // Resolver destinatarios ficticios.
+        // Resolver destinatarios utilizando datos ficticios.
         val destinatarios = when (alcance) {
 
-            AlcanceEnvio.APODERADO_INDIVIDUAL ->
+            AlcanceEnvio.APODERADO_INDIVIDUAL -> {
                 _apoderados.value.filter {
                     it.nombreCompleto == destino
                 }
+            }
 
             AlcanceEnvio.CURSO -> {
 
-                val idsEstudiantes = MockData.estudiantes
-                    .filter { it.curso == destino }
-                    .map { it.id }
-                    .toSet()
+                val idsEstudiantes =
+                    MockData.estudiantes
+                        .filter { it.curso == destino }
+                        .map { it.id }
+                        .toSet()
 
                 _apoderados.value.filter { apoderado ->
                     apoderado.pupilosIds.any {
@@ -389,12 +432,13 @@ class MpazNotificaViewModel(
                     it.nombre == destino
                 } ?: return false
 
-                val idsEstudiantes = MockData.estudiantes
-                    .filter {
-                        taller.id in it.talleresIds
-                    }
-                    .map { it.id }
-                    .toSet()
+                val idsEstudiantes =
+                    MockData.estudiantes
+                        .filter {
+                            taller.id in it.talleresIds
+                        }
+                        .map { it.id }
+                        .toSet()
 
                 _apoderados.value.filter { apoderado ->
                     apoderado.pupilosIds.any {
@@ -412,7 +456,6 @@ class MpazNotificaViewModel(
             return false
         }
 
-        // Registrar autor, fecha y datos del comunicado.
         val comunicadoId = UUID.randomUUID().toString()
 
         val fechaActual = SimpleDateFormat(
@@ -435,7 +478,7 @@ class MpazNotificaViewModel(
         )
 
         // RF-07 y RF-08: despacho simulado.
-        // Esta versión registra resultados ficticios exitosos.
+        // No se envían correos, SMS ni WhatsApp reales.
         val resultados = destinatarios.map { apoderado ->
 
             val canal = if (requiereFirmaFisica) {
@@ -453,7 +496,7 @@ class MpazNotificaViewModel(
             )
         }
 
-        // Guardar comunicado y resultados en una transacción.
+        // Guardar comunicado y envíos en una transacción Room.
         return try {
 
             comunicacionRepository.guardarComunicadoConEnvios(
@@ -493,12 +536,27 @@ class MpazNotificaViewModel(
     fun comunicadoPorId(id: String?): Comunicacion? =
         comunicados.value.find { it.id == id }
 
+    // Función original conservada por compatibilidad.
     fun enviosDe(
         comunicacionId: String
     ): List<EnvioDestinatario> =
         _envios.value.filter {
             it.comunicacionId == comunicacionId
         }
+
+    /**
+     * RF-08 y RF-11:
+     * Observa los resultados de despacho guardados
+     * en Room para cada comunicado.
+     */
+    fun observarEnvios(
+        comunicacionId: String
+    ): Flow<List<EnvioDestinatario>> {
+
+        return comunicacionRepository.obtenerEnvios(
+            comunicacionId
+        )
+    }
 
     /**
      * TODO(equipo): filtrar la bitácora por tipo, emisor y rango de fechas (formato AAAA-MM-DD;
@@ -556,14 +614,36 @@ class MpazNotificaViewModel(
         apoderadoId: String,
         canal: CanalDespacho
     ) {
+        // Integración del equipo: actualizar el canal en Room.
+        viewModelScope.launch {
 
-        // Actualización temporal de los datos ficticios.
-        // Falta trasladar la configuración a persistencia Room.
-        _apoderados.value = _apoderados.value.map {
-            if (it.id == apoderadoId) {
-                it.copy(canalPreferente = canal)
-            } else {
-                it
+            try {
+                val guardado = apoderadoRepository.actualizarCanal(
+                    apoderadoId = apoderadoId,
+                    canal = canal
+                )
+
+                if (guardado) {
+                    Log.d(
+                        "MPAZ_ROOM",
+                        "Canal preferente actualizado correctamente"
+                    )
+                } else {
+                    Log.w(
+                        "MPAZ_ROOM",
+                        "No se encontró el apoderado indicado"
+                    )
+                }
+
+            } catch (e: CancellationException) {
+                throw e
+
+            } catch (e: Exception) {
+                Log.e(
+                    "MPAZ_ROOM",
+                    "Error al guardar el canal preferente",
+                    e
+                )
             }
         }
     }

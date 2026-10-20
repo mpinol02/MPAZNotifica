@@ -4,6 +4,15 @@ package com.mpaznotifica.app.ui.screen.comunicados
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+
+// Agregado por el equipo: animaciones Jetpack Compose (G7).
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -287,7 +296,25 @@ fun RedactarComunicadoScreen(
                 )
             }
 
-            if (requiereFirma) {
+            // Agregado por el equipo: animación de entrada
+            // y salida del aviso de firma física (rúbrica G7).
+            //
+            // fadeIn/fadeOut: aparición y desaparición suave.
+            // expandVertically/shrinkVertically: expansión
+            // y contracción del espacio del aviso.
+            AnimatedVisibility(
+                visible = requiereFirma,
+                enter = fadeIn(
+                    animationSpec = tween(300)
+                ) + expandVertically(
+                    animationSpec = tween(300)
+                ),
+                exit = fadeOut(
+                    animationSpec = tween(250)
+                ) + shrinkVertically(
+                    animationSpec = tween(250)
+                )
+            ) {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor =

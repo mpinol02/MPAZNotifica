@@ -1,3 +1,4 @@
+
 package com.mpaznotifica.app.ui.screen
 
 import androidx.compose.foundation.Image
@@ -20,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,7 +35,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mpaznotifica.app.R
-import com.mpaznotifica.app.model.Perfil
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
 
 /**
@@ -50,10 +49,14 @@ import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
  *   profesor.4basicoA@mpaznotifica.cl / profesor123
  */
 @Composable
-fun LoginScreen(viewModel: MpazNotificaViewModel, onIngresar: () -> Unit) {
+fun LoginScreen(
+    viewModel: MpazNotificaViewModel,
+    onIngresar: () -> Unit
+) {
     var usuario by remember { mutableStateOf("") }
     var clave by remember { mutableStateOf("") }
     var claveVisible by remember { mutableStateOf(false) }
+
     val error by viewModel.errorLogin.collectAsState()
 
     Scaffold { padding ->
@@ -66,12 +69,18 @@ fun LoginScreen(viewModel: MpazNotificaViewModel, onIngresar: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
             Image(
                 painter = painterResource(id = R.drawable.logo_app),
                 contentDescription = "Logo",
                 modifier = Modifier.size(110.dp)
             )
-            Text("MPAZ Notifica", style = MaterialTheme.typography.headlineMedium)
+
+            Text(
+                "MPAZ Notifica",
+                style = MaterialTheme.typography.headlineMedium
+            )
+
             Text(
                 "Ingreso de personal docente y directivo",
                 style = MaterialTheme.typography.bodyMedium,
@@ -82,7 +91,9 @@ fun LoginScreen(viewModel: MpazNotificaViewModel, onIngresar: () -> Unit) {
                 value = usuario,
                 onValueChange = { usuario = it },
                 label = { Text("Correo institucional") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email
+                ),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -92,13 +103,29 @@ fun LoginScreen(viewModel: MpazNotificaViewModel, onIngresar: () -> Unit) {
                 onValueChange = { clave = it },
                 label = { Text("Clave de acceso") },
                 singleLine = true,
-                visualTransformation = if (claveVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                visualTransformation = if (claveVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password
+                ),
                 trailingIcon = {
-                    IconButton(onClick = { claveVisible = !claveVisible }) {
+                    IconButton(
+                        onClick = { claveVisible = !claveVisible }
+                    ) {
                         Icon(
-                            imageVector = if (claveVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = if (claveVisible) "Ocultar clave" else "Mostrar clave"
+                            imageVector = if (claveVisible) {
+                                Icons.Filled.VisibilityOff
+                            } else {
+                                Icons.Filled.Visibility
+                            },
+                            contentDescription = if (claveVisible) {
+                                "Ocultar clave"
+                            } else {
+                                "Mostrar clave"
+                            }
                         )
                     }
                 },
@@ -106,28 +133,26 @@ fun LoginScreen(viewModel: MpazNotificaViewModel, onIngresar: () -> Unit) {
             )
 
             if (error != null) {
-                Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
+                Text(
+                    error.orEmpty(),
+                    color = MaterialTheme.colorScheme.error
+                )
             }
 
             Button(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    if (viewModel.login(usuario.trim(), clave)) onIngresar()
+                    if (viewModel.login(usuario.trim(), clave)) {
+                        onIngresar()
+                    }
                 }
-            ) { Text("Ingresar") }
+            ) {
+                Text("Ingresar")
+            }
 
             // ---- SOLO PARA DESARROLLO ---- TODO(equipo): eliminar antes de entregar.
-            Text(
-                "Modo desarrollo (entrar sin login):",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Perfil.entries.forEach { perfil ->
-                TextButton(onClick = {
-                    viewModel.entrarModoDesarrollo(perfil)
-                    onIngresar()
-                }) { Text("Entrar como ${perfil.etiqueta}") }
-            }
+            // Resuelto por el equipo: se eliminaron los botones de acceso
+            // sin credenciales. Ahora se utiliza únicamente el login validado.
         }
     }
 }
