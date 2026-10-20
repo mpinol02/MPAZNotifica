@@ -2,7 +2,6 @@
 package com.mpaznotifica.app.ui.screen.comunicados
 
 import android.net.Uri
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +40,7 @@ import com.mpaznotifica.app.model.TipoComunicacion
 import com.mpaznotifica.app.ui.components.BarraSuperior
 import com.mpaznotifica.app.ui.components.SelectorDesplegable
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -58,20 +58,49 @@ fun RedactarComunicadoScreen(
     navController: NavHostController,
     viewModel: MpazNotificaViewModel
 ) {
+
     val usuario by viewModel.usuarioActivo.collectAsState()
 
     var asunto by remember { mutableStateOf("") }
     var cuerpo by remember { mutableStateOf("") }
-    var tipo by remember { mutableStateOf<TipoComunicacion?>(null) }
-    var alcance by remember { mutableStateOf<AlcanceEnvio?>(null) }
-    var destino by remember { mutableStateOf<String?>(null) }
-    var adjunto by remember { mutableStateOf<String?>(null) }
-    var requiereFirma by remember { mutableStateOf(false) }
-    var errores by remember { mutableStateOf(ErroresComunicado()) }
-    var confirmando by remember { mutableStateOf(false) }
-    var enviado by remember { mutableStateOf(false) }
+    var tipo by remember {
+        mutableStateOf<TipoComunicacion?>(null)
+    }
+    var alcance by remember {
+        mutableStateOf<AlcanceEnvio?>(null)
+    }
+    var destino by remember {
+        mutableStateOf<String?>(null)
+    }
+    var adjunto by remember {
+        mutableStateOf<String?>(null)
+    }
+    var requiereFirma by remember {
+        mutableStateOf(false)
+    }
 
-    // Agregado por el equipo: desplazamiento automático al mostrar errores.
+    var errores by remember {
+        mutableStateOf(ErroresComunicado())
+    }
+
+    var confirmando by remember {
+        mutableStateOf(false)
+    }
+
+    var enviado by remember {
+        mutableStateOf(false)
+    }
+
+    // Agregado por el equipo: estados del guardado Room.
+    var enviando by remember {
+        mutableStateOf(false)
+    }
+
+    var errorEnvio by remember {
+        mutableStateOf(false)
+    }
+
+    // Agregado por el equipo: desplazamiento al mostrar errores.
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -87,7 +116,10 @@ fun RedactarComunicadoScreen(
 
     Scaffold(
         topBar = {
-            BarraSuperior("Redactar comunicado", navController)
+            BarraSuperior(
+                "Redactar comunicado",
+                navController
+            )
         }
     ) { padding ->
 
@@ -100,55 +132,85 @@ fun RedactarComunicadoScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
 
+            // Asunto del comunicado.
             OutlinedTextField(
                 value = asunto,
-                onValueChange = { asunto = it },
-                label = { Text("Asunto") },
+                onValueChange = {
+                    asunto = it
+                    errores = errores.copy(asunto = null)
+                },
+                label = {
+                    Text("Asunto")
+                },
                 singleLine = true,
                 isError = errores.asunto != null,
                 supportingText = if (errores.asunto != null) {
-                    { Text(errores.asunto.orEmpty()) }
+                    {
+                        Text(errores.asunto.orEmpty())
+                    }
                 } else {
                     null
                 },
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Cuerpo del comunicado.
             OutlinedTextField(
                 value = cuerpo,
-                onValueChange = { cuerpo = it },
-                label = { Text("Cuerpo del mensaje") },
+                onValueChange = {
+                    cuerpo = it
+                    errores = errores.copy(cuerpo = null)
+                },
+                label = {
+                    Text("Cuerpo del mensaje")
+                },
                 minLines = 4,
                 isError = errores.cuerpo != null,
                 supportingText = if (errores.cuerpo != null) {
-                    { Text(errores.cuerpo.orEmpty()) }
+                    {
+                        Text(errores.cuerpo.orEmpty())
+                    }
                 } else {
                     null
                 },
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Tipo de comunicación.
             SelectorDesplegable(
                 etiqueta = "Tipo de comunicación",
                 opciones = viewModel.tiposPermitidos(usuario),
                 seleccion = tipo,
-                textoDe = { it.etiqueta },
-                onSeleccion = { tipo = it },
+                textoDe = {
+                    it.etiqueta
+                },
+                onSeleccion = {
+                    tipo = it
+                    errores = errores.copy(tipo = null)
+                },
                 error = errores.tipo
             )
 
+            // Alcance permitido según el perfil.
             SelectorDesplegable(
                 etiqueta = "Alcance (destinatarios)",
                 opciones = viewModel.alcancesPermitidos(usuario),
                 seleccion = alcance,
-                textoDe = { it.etiqueta },
+                textoDe = {
+                    it.etiqueta
+                },
                 onSeleccion = {
                     alcance = it
                     destino = null
+                    errores = errores.copy(
+                        alcance = null,
+                        destino = null
+                    )
                 },
                 error = errores.alcance
             )
 
+            // Destinos según perfil y alcance.
             if (
                 alcance != null &&
                 alcance != AlcanceEnvio.COLEGIO_COMPLETO
@@ -160,13 +222,21 @@ fun RedactarComunicadoScreen(
                         usuario
                     ),
                     seleccion = destino,
-                    textoDe = { it },
-                    onSeleccion = { destino = it },
+                    textoDe = {
+                        it
+                    },
+                    onSeleccion = {
+                        destino = it
+                        errores = errores.copy(destino = null)
+                    },
                     error = errores.destino
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Recurso nativo: adjuntar PDF.
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 OutlinedButton(
                     onClick = {
                         selectorPdf.launch(
@@ -184,7 +254,9 @@ fun RedactarComunicadoScreen(
 
                 if (adjunto != null) {
                     TextButton(
-                        onClick = { adjunto = null }
+                        onClick = {
+                            adjunto = null
+                        }
                     ) {
                         Text("Quitar")
                     }
@@ -198,13 +270,17 @@ fun RedactarComunicadoScreen(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Autorización informativa con firma física.
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Checkbox(
                     checked = requiereFirma,
                     onCheckedChange = {
                         requiereFirma = it
                     }
                 )
+
                 Text(
                     "Es una autorización que requiere " +
                             "firma física del apoderado"
@@ -229,38 +305,28 @@ fun RedactarComunicadoScreen(
                 }
             }
 
+            // Validar antes de mostrar la confirmación.
             Button(
+                enabled = !enviando,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 onClick = {
 
-                    // PRUEBA TEMPORAL: verificar que el botón responde.
-                    Log.e(
-                        "MPAZ_PRUEBA",
-                        "BOTON ENVIAR PRESIONADO"
-                    )
-
                     errores = viewModel.validarComunicado(
-                        asunto,
-                        cuerpo,
-                        tipo,
-                        alcance,
-                        destino
+                        asunto = asunto,
+                        cuerpo = cuerpo,
+                        tipo = tipo,
+                        alcance = alcance,
+                        destino = destino
                     )
 
-                    // PRUEBA TEMPORAL: revisar errores del ViewModel.
-                    Log.e(
-                        "MPAZ_PRUEBA",
-                        "Errores: $errores | hayErrores: ${errores.hayErrores}"
-                    )
-
-                    // Agregado por el equipo:
-                    // desplazarse al primer campo si hay errores.
                     if (errores.hayErrores) {
+
                         coroutineScope.launch {
                             scrollState.animateScrollTo(0)
                         }
+
                     } else if (
                         tipo != null &&
                         alcance != null
@@ -278,7 +344,9 @@ fun RedactarComunicadoScreen(
     if (confirmando) {
         AlertDialog(
             onDismissRequest = {
-                confirmando = false
+                if (!enviando) {
+                    confirmando = false
+                }
             },
             title = {
                 Text("¿Enviar comunicado?")
@@ -291,34 +359,67 @@ fun RedactarComunicadoScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !enviando,
                     onClick = {
+
                         val tipoElegido = tipo
                         val alcanceElegido = alcance
 
                         if (
                             tipoElegido != null &&
-                            alcanceElegido != null
+                            alcanceElegido != null &&
+                            !enviando
                         ) {
-                            viewModel.enviarComunicado(
-                                asunto = asunto.trim(),
-                                cuerpo = cuerpo.trim(),
-                                tipo = tipoElegido,
-                                alcance = alcanceElegido,
-                                destino = destino,
-                                adjuntoPdfNombre = adjunto,
-                                requiereFirmaFisica = requiereFirma
-                            )
-                        }
 
-                        confirmando = false
-                        enviado = true
+                            enviando = true
+
+                            coroutineScope.launch {
+
+                                val guardado = try {
+                                    viewModel.enviarComunicado(
+                                        asunto = asunto.trim(),
+                                        cuerpo = cuerpo.trim(),
+                                        tipo = tipoElegido,
+                                        alcance = alcanceElegido,
+                                        destino = destino,
+                                        adjuntoPdfNombre = adjunto,
+                                        requiereFirmaFisica = requiereFirma
+                                    )
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    android.util.Log.e(
+                                        "MPAZ_ROOM",
+                                        "Error durante el envío",
+                                        e
+                                    )
+                                    false
+                                } finally {
+                                    enviando = false
+                                }
+
+                                confirmando = false
+
+                                if (guardado) {
+                                    enviado = true
+                                } else {
+                                    errorEnvio = true
+                                }
+                            }
+                        }
                     }
                 ) {
-                    Text("Enviar")
+                    Text(
+                        if (enviando)
+                            "Guardando..."
+                        else
+                            "Enviar"
+                    )
                 }
             },
             dismissButton = {
                 TextButton(
+                    enabled = !enviando,
                     onClick = {
                         confirmando = false
                     }
@@ -332,14 +433,14 @@ fun RedactarComunicadoScreen(
     // Alerta visual de confirmación de envío (RNF del caso).
     if (enviado) {
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = {},
             title = {
                 Text("Comunicado enviado")
             },
             text = {
                 Text(
-                    "El envío se registró en el historial " +
-                            "(cuando enviarComunicado() esté implementada)."
+                    "El comunicado y los resultados del despacho " +
+                            "simulado se guardaron correctamente."
                 )
             },
             confirmButton = {
@@ -347,6 +448,33 @@ fun RedactarComunicadoScreen(
                     onClick = {
                         enviado = false
                         navController.popBackStack()
+                    }
+                ) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
+
+    // Mensaje agregado por el equipo: error de guardado.
+    if (errorEnvio) {
+        AlertDialog(
+            onDismissRequest = {
+                errorEnvio = false
+            },
+            title = {
+                Text("No se pudo guardar")
+            },
+            text = {
+                Text(
+                    "Comprueba los datos, destinatarios y permisos " +
+                            "del usuario. Inténtalo nuevamente."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        errorEnvio = false
                     }
                 ) {
                     Text("Aceptar")

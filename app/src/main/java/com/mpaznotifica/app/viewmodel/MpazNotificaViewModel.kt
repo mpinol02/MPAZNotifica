@@ -2,25 +2,33 @@
 package com.mpaznotifica.app.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mpaznotifica.app.data.MockData
 import com.mpaznotifica.app.data.local.AppDatabase
 import com.mpaznotifica.app.data.repository.ComunicacionRepository
-import com.mpaznotifica.app.data.MockData
 import com.mpaznotifica.app.model.AlcanceEnvio
 import com.mpaznotifica.app.model.Apoderado
 import com.mpaznotifica.app.model.CanalDespacho
 import com.mpaznotifica.app.model.Comunicacion
 import com.mpaznotifica.app.model.EnvioDestinatario
 import com.mpaznotifica.app.model.ErroresComunicado
+import com.mpaznotifica.app.model.EstadoEnvio
 import com.mpaznotifica.app.model.Perfil
 import com.mpaznotifica.app.model.TipoComunicacion
 import com.mpaznotifica.app.model.Usuario
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 
 /**
  * ViewModel único, compartido por todas las pantallas (se crea una sola vez en AppNavigation).
@@ -37,11 +45,11 @@ class MpazNotificaViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    // Integración inicial de Room con la capa Repository.
+    // Integración del equipo: acceso a Room mediante Repository.
     private val database = AppDatabase.obtenerInstancia(application)
 
     private val comunicacionRepository =
-        ComunicacionRepository(database.comunicacionDao())
+        ComunicacionRepository(database)
 
     // =====================================================================
     // Módulo "Autenticación y perfiles"
@@ -118,7 +126,8 @@ class MpazNotificaViewModel(
     val emisores: List<Usuario> = MockData.usuarios
 
     private val _apoderados = MutableStateFlow(MockData.apoderados)
-    val apoderados: StateFlow<List<Apoderado>> = _apoderados.asStateFlow()
+    val apoderados: StateFlow<List<Apoderado>> =
+        _apoderados.asStateFlow()
 
     fun apoderadoPorId(id: String): Apoderado? =
         _apoderados.value.find { it.id == id }
@@ -146,7 +155,6 @@ class MpazNotificaViewModel(
     ): List<AlcanceEnvio> {
 
         return when (usuario?.perfil) {
-
             Perfil.INSPECTORIA_GENERAL ->
                 AlcanceEnvio.entries.toList()
 
@@ -164,8 +172,23 @@ class MpazNotificaViewModel(
      */
     fun tiposPermitidos(
         usuario: Usuario?
-    ): List<TipoComunicacion> =
-        TipoComunicacion.entries.toList()
+    ): List<TipoComunicacion> {
+
+        return when (usuario?.perfil) {
+
+            Perfil.INSPECTORIA_GENERAL ->
+                TipoComunicacion.entries.toList()
+
+            Perfil.PROFESOR_JEFE ->
+                listOf(
+                    TipoComunicacion.PEDAGOGICA,
+                    TipoComunicacion.CITACION,
+                    TipoComunicacion.SALIDA_PEDAGOGICA
+                )
+
+            else -> emptyList()
+        }
+    }
 
     /**
      * TODO(equipo): opciones de destino según el alcance, respetando el perfil (por ejemplo, un
@@ -197,9 +220,7 @@ class MpazNotificaViewModel(
                 talleres.map { it.nombre }
 
             AlcanceEnvio.APODERADO_INDIVIDUAL ->
-                _apoderados.value.map {
-                    it.nombreCompleto
-                }
+                _apoderados.value.map { it.nombreCompleto }
 
             AlcanceEnvio.COLEGIO_COMPLETO,
             null -> emptyList()
@@ -222,12 +243,16 @@ class MpazNotificaViewModel(
         val usuario = _usuarioActivo.value
 
         val errorAsunto = when {
-            asunto.isBlank() -> "Debe ingresar el asunto"
+            asunto.isBlank() ->
+                "Debe ingresar el asunto"
+
             else -> null
         }
 
         val errorCuerpo = when {
-            cuerpo.isBlank() -> "Debe ingresar el mensaje"
+            cuerpo.isBlank() ->
+                "Debe ingresar el mensaje"
+
             else -> null
         }
 
@@ -287,7 +312,7 @@ class MpazNotificaViewModel(
         )
     }
 
-    // Room observa los comunicados y mantiene actualizado el historial.
+    // Integración del equipo: historial observado desde Room.
     val comunicados: StateFlow<List<Comunicacion>> =
         comunicacionRepository.comunicados.stateIn(
             scope = viewModelScope,
@@ -295,6 +320,8 @@ class MpazNotificaViewModel(
             initialValue = emptyList()
         )
 
+    // Datos temporales de ejemplo del proyecto base.
+    // Los envíos nuevos se guardan por separado en Room.
     private val _envios = MutableStateFlow(MockData.envios)
 
     /**
@@ -309,7 +336,7 @@ class MpazNotificaViewModel(
      * Regla: el registro queda inmutable una vez enviado.
      * Hoy no hace nada: el comunicado no aparece en el historial.
      */
-    fun enviarComunicado(
+    suspend fun enviarComunicado(
         asunto: String,
         cuerpo: String,
         tipo: TipoComunicacion,
@@ -317,8 +344,136 @@ class MpazNotificaViewModel(
         destino: String?,
         adjuntoPdfNombre: String?,
         requiereFirmaFisica: Boolean
-    ) {
-        // Sin implementar todavía.
+    ): Boolean {
+
+        // RF-06: comprobar los permisos antes del guardado.
+        val errores = validarComunicado(
+            asunto = asunto,
+            cuerpo = cuerpo,
+            tipo = tipo,
+            alcance = alcance,
+            destino = destino
+        )
+
+        if (errores.hayErrores) {
+            return false
+        }
+
+        val usuario = _usuarioActivo.value ?: return false
+
+        // Resolver destinatarios ficticios.
+        val destinatarios = when (alcance) {
+
+            AlcanceEnvio.APODERADO_INDIVIDUAL ->
+                _apoderados.value.filter {
+                    it.nombreCompleto == destino
+                }
+
+            AlcanceEnvio.CURSO -> {
+
+                val idsEstudiantes = MockData.estudiantes
+                    .filter { it.curso == destino }
+                    .map { it.id }
+                    .toSet()
+
+                _apoderados.value.filter { apoderado ->
+                    apoderado.pupilosIds.any {
+                        it in idsEstudiantes
+                    }
+                }
+            }
+
+            AlcanceEnvio.TALLER -> {
+
+                val taller = talleres.find {
+                    it.nombre == destino
+                } ?: return false
+
+                val idsEstudiantes = MockData.estudiantes
+                    .filter {
+                        taller.id in it.talleresIds
+                    }
+                    .map { it.id }
+                    .toSet()
+
+                _apoderados.value.filter { apoderado ->
+                    apoderado.pupilosIds.any {
+                        it in idsEstudiantes
+                    }
+                }
+            }
+
+            AlcanceEnvio.COLEGIO_COMPLETO ->
+                _apoderados.value
+
+        }.distinctBy { it.id }
+
+        if (destinatarios.isEmpty()) {
+            return false
+        }
+
+        // Registrar autor, fecha y datos del comunicado.
+        val comunicadoId = UUID.randomUUID().toString()
+
+        val fechaActual = SimpleDateFormat(
+            "yyyy-MM-dd HH:mm",
+            Locale.ROOT
+        ).format(Date())
+
+        val comunicado = Comunicacion(
+            id = comunicadoId,
+            asunto = asunto.trim(),
+            cuerpo = cuerpo.trim(),
+            tipo = tipo,
+            alcance = alcance,
+            destinoReferencia = destino,
+            adjuntoPdfNombre = adjuntoPdfNombre,
+            requiereFirmaFisica = requiereFirmaFisica,
+            autorId = usuario.id,
+            autorNombre = usuario.nombre,
+            fechaHora = fechaActual
+        )
+
+        // RF-07 y RF-08: despacho simulado.
+        // Esta versión registra resultados ficticios exitosos.
+        val resultados = destinatarios.map { apoderado ->
+
+            val canal = if (requiereFirmaFisica) {
+                CanalDespacho.EMAIL
+            } else {
+                apoderado.canalPreferente
+            }
+
+            EnvioDestinatario(
+                id = UUID.randomUUID().toString(),
+                comunicacionId = comunicadoId,
+                apoderadoId = apoderado.id,
+                canal = canal,
+                estado = EstadoEnvio.DESPACHADO
+            )
+        }
+
+        // Guardar comunicado y resultados en una transacción.
+        return try {
+
+            comunicacionRepository.guardarComunicadoConEnvios(
+                comunicacion = comunicado,
+                envios = resultados
+            )
+
+            true
+
+        } catch (e: CancellationException) {
+            throw e
+
+        } catch (e: Exception) {
+            Log.e(
+                "MPAZ_ROOM",
+                "Error al guardar el comunicado",
+                e
+            )
+            false
+        }
     }
 
     // =====================================================================
@@ -401,6 +556,15 @@ class MpazNotificaViewModel(
         apoderadoId: String,
         canal: CanalDespacho
     ) {
-        // Sin implementar todavía.
+
+        // Actualización temporal de los datos ficticios.
+        // Falta trasladar la configuración a persistencia Room.
+        _apoderados.value = _apoderados.value.map {
+            if (it.id == apoderadoId) {
+                it.copy(canalPreferente = canal)
+            } else {
+                it
+            }
+        }
     }
 }

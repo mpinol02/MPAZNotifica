@@ -1,10 +1,14 @@
 
 package com.mpaznotifica.app.data.repository
 
-import com.mpaznotifica.app.data.local.ComunicacionDao
+import com.mpaznotifica.app.data.local.AppDatabase
 import com.mpaznotifica.app.data.local.ComunicacionEntity
+import com.mpaznotifica.app.data.local.EnvioEntity
 import com.mpaznotifica.app.model.AlcanceEnvio
+import com.mpaznotifica.app.model.CanalDespacho
 import com.mpaznotifica.app.model.Comunicacion
+import com.mpaznotifica.app.model.EnvioDestinatario
+import com.mpaznotifica.app.model.EstadoEnvio
 import com.mpaznotifica.app.model.TipoComunicacion
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -12,8 +16,9 @@ import kotlinx.coroutines.flow.map
 /**
  * Repository de comunicaciones de MPAZ Notifica.
  *
- * Conecta el ViewModel con el DAO de Room.
+ * Conecta el ViewModel con los DAO de Room.
  *
+ * RF-08: registrar resultados de envío.
  * RF-09: historial de comunicados.
  * RF-10: filtros por fecha, tipo y emisor.
  * RF-11: almacenamiento de comunicados.
@@ -21,8 +26,11 @@ import kotlinx.coroutines.flow.map
  * Las comunicaciones enviadas son inmutables.
  */
 class ComunicacionRepository(
-    private val dao: ComunicacionDao
+    private val database: AppDatabase
 ) {
+
+    private val dao = database.comunicacionDao()
+    private val envioDao = database.envioDao()
 
     // Observar todos los comunicados guardados.
     val comunicados: Flow<List<Comunicacion>> =
@@ -30,9 +38,32 @@ class ComunicacionRepository(
             lista.map { it.toModelo() }
         }
 
-    // Guardar un comunicado.
+    // Guardar un comunicado sin envíos asociados.
     suspend fun insertar(comunicacion: Comunicacion) {
         dao.insertar(comunicacion.toEntity())
+    }
+
+    /**
+     * Guarda el comunicado y todos los resultados
+     * de despacho mediante una transacción Room.
+     *
+     * Se utiliza para registrar un envío completo,
+     * sin almacenar registros incompletos.
+     */
+    suspend fun guardarComunicadoConEnvios(
+        comunicacion: Comunicacion,
+        envios: List<EnvioDestinatario>
+    ) {
+        require(envios.all {
+            it.comunicacionId == comunicacion.id
+        }) {
+            "Los envíos deben pertenecer al comunicado"
+        }
+
+        database.guardarComunicadoConEnvios(
+            comunicacion = comunicacion.toEntity(),
+            envios = envios.map { it.toEntity() }
+        )
     }
 
     // Buscar un comunicado por su identificador.
@@ -58,7 +89,19 @@ class ComunicacionRepository(
         }
     }
 
-    // Convertir el modelo de la aplicación a Entity de Room.
+    // Observar resultados de un comunicado.
+    fun obtenerEnvios(
+        comunicacionId: String
+    ): Flow<List<EnvioDestinatario>> {
+
+        return envioDao.obtenerPorComunicacion(
+            comunicacionId
+        ).map { lista ->
+            lista.map { it.toModelo() }
+        }
+    }
+
+    // Convertir modelo de comunicación a Entity.
     private fun Comunicacion.toEntity(): ComunicacionEntity {
         return ComunicacionEntity(
             id = id,
@@ -75,7 +118,7 @@ class ComunicacionRepository(
         )
     }
 
-    // Convertir Entity de Room al modelo de la aplicación.
+    // Convertir Entity de comunicación al modelo.
     private fun ComunicacionEntity.toModelo(): Comunicacion {
         return Comunicacion(
             id = id,
@@ -89,6 +132,28 @@ class ComunicacionRepository(
             autorId = autorId,
             autorNombre = autorNombre,
             fechaHora = fechaHora
+        )
+    }
+
+    // Convertir resultado de envío a Entity.
+    private fun EnvioDestinatario.toEntity(): EnvioEntity {
+        return EnvioEntity(
+            id = id,
+            comunicacionId = comunicacionId,
+            apoderadoId = apoderadoId,
+            canal = canal.name,
+            estado = estado.name
+        )
+    }
+
+    // Convertir Entity de envío al modelo.
+    private fun EnvioEntity.toModelo(): EnvioDestinatario {
+        return EnvioDestinatario(
+            id = id,
+            comunicacionId = comunicacionId,
+            apoderadoId = apoderadoId,
+            canal = CanalDespacho.valueOf(canal),
+            estado = EstadoEnvio.valueOf(estado)
         )
     }
 }

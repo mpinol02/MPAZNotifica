@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.withTransaction
 
 /**
  * Base de datos local de MPAZ Notifica.
@@ -30,7 +31,25 @@ abstract class AppDatabase : RoomDatabase() {
 
     // Permite acceder a las operaciones de comunicaciones.
     abstract fun comunicacionDao(): ComunicacionDao
+
+    // Permite acceder a los resultados de envíos simulados.
     abstract fun envioDao(): EnvioDao
+
+    /**
+     * Guarda un comunicado junto con todos sus envíos.
+     *
+     * Si ocurre un error, Room revierte la transacción
+     * completa y evita guardar información incompleta.
+     */
+    suspend fun guardarComunicadoConEnvios(
+        comunicacion: ComunicacionEntity,
+        envios: List<EnvioEntity>
+    ) {
+        withTransaction {
+            comunicacionDao().insertar(comunicacion)
+            envioDao().insertarTodos(envios)
+        }
+    }
 
     companion object {
 
@@ -47,6 +66,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mpaz_notifica_db"
                 )
+                    // Solo para desarrollo con datos ficticios.
+                    // Puede borrar datos al reconstruir el esquema.
                     .fallbackToDestructiveMigration()
                     .build()
 
