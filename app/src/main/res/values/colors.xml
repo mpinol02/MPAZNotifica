@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colores PROVISIONALES (logo e ícono). TODO(equipo): reemplazar por los oficiales
+         y mantenerlos iguales a ui/theme/Theme.kt. -->
+    <color name="marca_azul">#FF0D47A1</color>
+    <color name="marca_naranjo">#FFEF6C00</color>
+    <color name="marca_blanco">#FFFFFFFF</color>
+</resources>

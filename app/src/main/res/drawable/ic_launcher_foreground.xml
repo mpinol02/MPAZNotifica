@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Capa frontal del ícono adaptativo (Android 8+), dentro de la zona segura de 66dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="@color/marca_blanco" android:pathData="M34,42 L74,42 L74,70 L34,70 Z" />
+    <path android:strokeColor="@color/marca_azul" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M35,43 L54,58 L73,43" />
+    <path android:fillColor="@color/marca_naranjo" android:pathData="M66,42 A7,7 0 1,1 80,42 A7,7 0 1,1 66,42 Z" />
+</vector>
