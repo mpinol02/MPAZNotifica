@@ -1,3 +1,4 @@
+
 package com.mpaznotifica.app.ui.theme
 
 import android.app.Activity
@@ -16,10 +17,37 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Colores PROVISIONALES. TODO(equipo): reemplazar por los oficiales si la escuela o el CITT
-// los entregan, y mantenerlos iguales a res/values/colors.xml (logo e ícono de la app).
+/**
+ * Configuración visual de MPAZ Notifica.
+ *
+ * Utiliza Material 3 y una paleta de colores
+ * definida para la versión académica del proyecto.
+ *
+ * Colores actuales:
+ * - Azul MPAZ: color principal de navegación y botones.
+ * - Naranjo: color secundario para elementos destacados.
+ *
+ * La paleta actual es una propuesta del equipo.
+ * No se presenta como identidad institucional oficial.
+ *
+ * Si el establecimiento o el CITT proporciona una
+ * paleta oficial, deberá actualizarse esta configuración
+ * junto con los recursos de res/values/colors.xml.
+ *
+ * Se mantiene compatibilidad con modo claro y oscuro.
+ */
+
+// =====================================================
+// COLORES DEL PROYECTO
+// =====================================================
+
 private val AzulMPAZ = Color(0xFF0D47A1)
+
 private val NaranjoAlerta = Color(0xFFEF6C00)
+
+// =====================================================
+// ESQUEMA DE COLORES CLARO
+// =====================================================
 
 private val LightColors = lightColorScheme(
     primary = AzulMPAZ,
@@ -27,35 +55,83 @@ private val LightColors = lightColorScheme(
     tertiary = NaranjoAlerta
 )
 
+// =====================================================
+// ESQUEMA DE COLORES OSCURO
+// =====================================================
+
 private val DarkColors = darkColorScheme(
     primary = AzulMPAZ,
     secondary = NaranjoAlerta,
     tertiary = NaranjoAlerta
 )
 
+/**
+ * Aplica el tema Material 3 a las pantallas.
+ *
+ * @param darkTheme Activa el esquema oscuro
+ * según la configuración del dispositivo.
+ *
+ * @param dynamicColor Permite utilizar colores
+ * dinámicos de Android cuando está habilitado.
+ * Por defecto se mantiene la paleta del proyecto.
+ *
+ * @param content Contenido Compose al que se aplica el tema.
+ */
 @Composable
 fun MpazNotificaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // false = siempre usar los colores de la app
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+
+    // Seleccionar el esquema de colores.
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+
+        dynamicColor &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+
+            if (darkTheme) {
+                dynamicDarkColorScheme(context)
+            } else {
+                dynamicLightColorScheme(context)
+            }
         }
+
         darkTheme -> DarkColors
+
         else -> LightColors
     }
 
+    // =====================================================
+    // BARRA DE ESTADO DE ANDROID
+    // =====================================================
+
     val view = LocalView.current
+
     if (!view.isInEditMode) {
+
         SideEffect {
+
             val window = (view.context as Activity).window
+
+            // Mantener el color institucional
+            // en la barra de estado.
+            @Suppress("DEPRECATION")
             window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+
+            // Conserva el comportamiento previo del proyecto.
+            WindowCompat.getInsetsController(
+                window,
+                view
+            ).isAppearanceLightStatusBars = darkTheme
         }
     }
+
+    // =====================================================
+    // APLICAR MATERIAL 3
+    // =====================================================
 
     MaterialTheme(
         colorScheme = colorScheme,

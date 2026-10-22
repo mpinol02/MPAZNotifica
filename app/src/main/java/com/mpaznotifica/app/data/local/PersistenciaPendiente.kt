@@ -1,30 +1,107 @@
 package com.mpaznotifica.app.data.local
 
-// =====================================================================================
-// TODO(equipo): PERSISTENCIA LOCAL CON ROOM (exigida por el caso; contenido de la Semana 9)
-// =====================================================================================
-// Las dependencias de Room, KSP y DataStore YA están configuradas en Gradle. Falta crear
-// las clases en esta carpeta y reemplazar las listas de MockData que usa el ViewModel.
+// ============================================================================
+// PERSISTENCIA LOCAL CON ROOM - IMPLEMENTACIÓN DEL EQUIPO
+// ============================================================================
 //
-// 1) ENTIDADES (@Entity) — una por tabla del Modelo Relacional del equipo, por ejemplo:
-//      usuarios, apoderados, estudiantes, talleres, comunicaciones y envios
-//      (EnvioDestinatario: un registro por destinatario con canal y estado).
-//    Relaciones: apoderado 1..N estudiantes (supuesto), estudiante N..N talleres,
-//    comunicación 1..N envíos. Los enums se pueden guardar como String (enum.name).
+// Este archivo corresponde a la guía de persistencia local
+// incluida originalmente en el proyecto base del profesor.
 //
-// 2) DAOs (@Dao) — consultas que necesita cada pantalla, por ejemplo:
-//      - historial ordenado por fecha, filtrable por tipo, emisor y rango de fechas
-//      - apoderados de un curso / de un taller (para resolver destinatarios)
-//      - envíos de una comunicación
-//    Regla: las comunicaciones enviadas son INMUTABLES -> el DAO de comunicaciones solo
-//    necesita @Insert y consultas (sin @Update ni @Delete).
+// La implementación de Room fue completada por el equipo
+// para MPAZ Notifica.
 //
-// 3) BASE DE DATOS (@Database) — AppDatabase con las entidades, version = 1,
-//    exportSchema = false, e instancia única.
+// 1. ENTIDADES (@Entity)
 //
-// 4) DATASTORE (opcional) — recordar el último usuario que inició sesión.
+// Se utilizan las siguientes entidades persistentes:
 //
-// 5) VIEWMODEL — reemplazar MutableStateFlow(MockData...) por los Flow del DAO con
-//    stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList()).
-//    Para tener Context, el ViewModel puede extender AndroidViewModel(application).
-// =====================================================================================
+// - ComunicacionEntity:
+//   Almacena el contenido del comunicado, su autor,
+//   fecha, tipo, alcance y otros datos asociados.
+//
+// - EnvioEntity:
+//   Registra el resultado del despacho simulado
+//   por cada apoderado destinatario, incluyendo
+//   el canal utilizado y el estado del envío.
+//
+// - ApoderadoEntity:
+//   Guarda los apoderados ficticios, sus datos
+//   de contacto, estudiantes asociados
+//   y canal preferente de comunicación.
+//
+// Los usuarios, estudiantes y talleres utilizados
+// como datos de referencia permanecen en MockData.
+//
+// 2. DAO (@Dao)
+//
+// Las operaciones de almacenamiento y consulta
+// se realizan mediante:
+//
+// - ComunicacionDao:
+//   Inserción y consulta de comunicados.
+//
+// - EnvioDao:
+//   Inserción y consulta de resultados de despacho.
+//
+// - ApoderadoDao:
+//   Consulta y actualización de apoderados
+//   y sus canales preferentes.
+//
+// Los comunicados enviados se mantienen inmutables
+// dentro del funcionamiento normal de la aplicación.
+//
+// 3. BASE DE DATOS (@Database)
+//
+// AppDatabase utiliza Room y SQLite.
+//
+// - Nombre: mpaz_notifica_db
+// - Versión actual: 3
+// - Instancia única mediante obtenerInstancia().
+//
+// Se incorporó una migración de versión 2 a 3
+// para agregar la tabla de apoderados.
+//
+// El registro de un comunicado y sus envíos
+// se realiza mediante una transacción Room.
+//
+// 4. DATASTORE
+//
+// DataStore fue propuesto como recurso opcional
+// en la plantilla original.
+//
+// La implementación actual no necesita DataStore
+// para conservar los comunicados, envíos
+// ni los canales preferentes.
+//
+// Estos datos se almacenan mediante Room.
+//
+// 5. VIEWMODEL Y REPOSITORIES
+//
+// MpazNotificaViewModel utiliza AndroidViewModel
+// para acceder al contexto de la aplicación.
+//
+// ComunicacionRepository gestiona el acceso
+// a los comunicados y sus resultados de envío.
+//
+// ApoderadoRepository gestiona los apoderados
+// y el almacenamiento del canal preferente.
+//
+// StateFlow permite que las pantallas observen
+// cambios y actualicen su contenido mediante
+// collectAsState().
+//
+// 6. COMPROBACIÓN DE PERSISTENCIA
+//
+// Se realizaron pruebas para verificar que:
+//
+// - Los comunicados aparecen en el historial.
+// - Los resultados de despacho quedan registrados.
+// - Los canales preferentes se almacenan en Room.
+// - Los comunicados permanecen después de cerrar
+//   y volver a abrir la aplicación.
+//
+// Esta persistencia corresponde al recurso local
+// del dispositivo; no utiliza un servidor remoto.
+//
+// ============================================================================
+// FIN DE LA DOCUMENTACIÓN DE PERSISTENCIA LOCAL
+// ============================================================================

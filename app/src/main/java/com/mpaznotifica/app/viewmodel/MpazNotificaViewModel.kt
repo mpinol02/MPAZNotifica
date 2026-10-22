@@ -121,18 +121,6 @@ class MpazNotificaViewModel(
         return true
     }
 
-    /**
-     * Compatibilidad temporal.
-     * Eliminar durante la etapa de limpieza final.
-     */
-    fun entrarModoDesarrollo(perfil: Perfil) {
-        _usuarioActivo.value =
-            MockData.usuarios.first {
-                it.perfil == perfil
-            }
-        _errorLogin.value = null
-    }
-
     fun logout() {
         _usuarioActivo.value = null
         _errorLogin.value = null

@@ -1,4 +1,3 @@
-
 # MPAZ Notifica — Sección DSY1105-007, Maipú
 
 Proyecto Android desarrollado a partir de la base entregada por el profesor para el caso de Vinculación con el Medio **"MPAZ Notifica: Optimización del canal de comunicación móvil y trazabilidad escolar"** de la Escuela Escritora Marcela Paz.
@@ -72,6 +71,7 @@ LOGIN ──(login OK)──> PANEL
                          |       +──> Selector de PDF
                          |       +──> Autorización con firma física
                          |       +──> Confirmación y envío simulado
+                         |       +──> Notificación local de registro
                          |
                          +──> HISTORIAL
                          |       |
@@ -107,11 +107,12 @@ Ruta principal:
 | `data/local/` | Entidades, DAO y base de datos Room. |
 | `data/repository/` | Repositorios de comunicaciones y apoderados. |
 | `data/remote/` | `ApiPendiente.kt`: guía original para una futura integración con servicios externos. |
-| `viewmodel/` | `MpazNotificaViewModel`: lógica de negocio, validaciones, permisos y StateFlow. |
+| `viewmodel/` | `MpazNotificaViewModel`: lógica de negocio, validaciones, permisos y StateFlow; `DespachoSimulado.kt`: evaluación local del estado por canal. |
 | `navigation/` | `AppNavigation`: rutas, NavHost y navegación. |
 | `ui/components/` | `BarraSuperior` y `SelectorDesplegable`. |
 | `ui/screen/` | Pantallas de login, panel, comunicados, historial, detalle y apoderados. |
 | `ui/theme/` y `res/` | Tema, colores, logo e ícono del proyecto. |
+| Raíz del paquete | `NotificacionLocal.kt`: segundo recurso nativo de Android. |
 
 ### Persistencia local con Room
 
@@ -129,7 +130,7 @@ Los archivos utilizados para la persistencia incluyen:
 | `ComunicacionRepository.kt` | Acceso y transformación de datos de comunicados. |
 | `ApoderadoRepository.kt` | Acceso y transformación de datos de apoderados. |
 
-Se conserva `PersistenciaPendiente.kt` como guía original del profesor.
+Se conserva `PersistenciaPendiente.kt` como documentación actualizada a partir de la guía original del profesor.
 
 El esquema de Room utiliza una migración de la versión 2 a la 3 para agregar los apoderados sin eliminar los comunicados previamente almacenados en esa ruta de actualización.
 
@@ -179,24 +180,26 @@ El ViewModel utiliza `StateFlow` para mantener información observable desde las
 | Autenticación y perfiles | Restringir las opciones de emisión según el perfil | `RedactarComunicadoScreen` | `alcancesPermitidos()`, `tiposPermitidos()`, `destinosPara()` |
 | Redacción y envío | Redactar asunto, cuerpo, tipo y adjunto PDF opcional | `RedactarComunicadoScreen` | `validarComunicado()` y selector PDF |
 | Redacción y envío | Elegir destinatarios: apoderado, curso, taller o colegio | `RedactarComunicadoScreen` | `destinosPara()` |
-| Redacción y envío | Inspectoría emite a distintos alcances y Profesor Jefe solo a su curso | `RedactarComunicadoScreen` | Validaciones de permisos |
+| Redacción y envío | Inspectoría emite a distintos alcances y Profesor Jefe solo a su curso y a los apoderados individuales de ese curso | `RedactarComunicadoScreen` | `alcancesPermitidos()`, `destinosPara()` y `validarComunicado()` |
 | Redacción y envío | Simular el despacho por el canal correspondiente | `RedactarComunicadoScreen` | `enviarComunicado()` |
-| Redacción y envío | Registrar estado por destinatario | `DetalleComunicadoScreen` | `EnvioDestinatario` y Room |
+| Redacción y envío | Registrar `DESPACHADO` o `FALLIDO` según los datos de contacto | `DetalleComunicadoScreen` | `DespachoSimulado.estadoPara()`, `EnvioDestinatario` y Room |
 | Historial y trazabilidad | Bitácora de comunicados | `HistorialScreen` | Flow de Room |
 | Historial y trazabilidad | Filtrar por fecha, tipo y emisor | `HistorialScreen` | `historialFiltrado()` |
 | Historial y trazabilidad | Registrar autor, fecha, contenido, destinatarios y canal | `DetalleComunicadoScreen` | `enviarComunicado()` y Repository |
-| Autorizaciones | Avisar cuando se requiere firma física | `RedactarComunicadoScreen` | Casilla y aviso animado |
+| Autorizaciones | Avisar cuando se requiere firma física y agregar la indicación de firma en papel al cuerpo | `RedactarComunicadoScreen` | Casilla, aviso animado y `enviarComunicado()` |
+| Recursos nativos | Mostrar notificación al registrar exitosamente un comunicado | `RedactarComunicadoScreen` | `NotificacionLocal.mostrarComunicadoRegistrado()` |
 | Canal preferente | Configurar canal del apoderado | `ApoderadosScreen` | `actualizarCanalPreferente()` |
 | Persistencia | Guardar datos con Room / SQLite | Diversas pantallas | Entity, DAO, Database y Repository |
 
 ### Reglas de negocio implementadas
 
 - Inspectoría General puede emitir comunicados utilizando los alcances autorizados.
-- El Profesor/a Jefe solamente puede seleccionar su curso asignado.
+- El Profesor/a Jefe puede seleccionar su curso asignado y los apoderados individuales asociados a ese curso (AP1 y AP2 en los datos ficticios). No puede enviar a otros cursos ni a sus apoderados.
 - Las validaciones del ViewModel también comprueban los permisos antes de guardar.
 - El formulario exige los campos obligatorios.
 - Los comunicados enviados quedan registrados y no pueden editarse después de su envío.
-- Los resultados de despacho se almacenan por destinatario.
+- Los resultados de despacho se almacenan por destinatario, con estado `DESPACHADO` o `FALLIDO` según exista correo o teléfono para el canal elegido.
+- Si una autorización requiere firma física, se añade una indicación al final del cuerpo sobre la firma en papel.
 - Los canales preferentes se guardan con Room.
 - El historial permite filtrar los comunicados.
 
@@ -212,25 +215,27 @@ A diferencia del proyecto base inicial, el equipo implementó la lógica funcion
 |---|---|
 | Login con credenciales ficticias | Implementado y probado |
 | Validación de correo y contraseña | Implementado y probado |
-| Restricciones por perfil | Implementado y probado |
+| Restricciones por perfil, incluido apoderado individual del curso del Profesor Jefe | Implementado y probado desde la interfaz |
 | Redacción de comunicados | Implementado y probado |
 | Validación del formulario | Implementado y probado |
 | Confirmación antes del envío | Implementado y probado |
-| Despacho simulado | Implementado y probado |
+| Despacho simulado por canal y estados `DESPACHADO`/`FALLIDO` | Implementado; seis pruebas automatizadas de reglas aprobadas |
 | Historial de comunicados | Implementado y probado |
 | Filtros por fecha, tipo y autor | Implementado y probado |
 | Detalle y estado por destinatario | Implementado y probado |
 | Persistencia de comunicados en Room | Implementado y probado |
 | Persistencia de canales preferentes | Implementado y probado |
 | Selector nativo de PDF | Implementado y probado |
+| Notificación local de Android y solicitud de permiso en Android 13+ | Implementado y probado en emulador |
+| Texto de firma física incorporado al cuerpo | Implementado y comprobado en historial |
 | Animación de aviso de firma física | Implementado y probado |
-| Pruebas automatizadas | 10 pruebas aprobadas |
+| Pruebas automatizadas | 16 pruebas aprobadas: 5 ViewModel, 5 Room y 6 despacho simulado |
 
 ### Limitaciones del MVP académico
 
 - No se envían mensajes reales por correo, SMS ni WhatsApp.
 - Los destinatarios utilizados son ficticios.
-- El resultado de despacho implementado registra envíos como `DESPACHADO`; no se ha desarrollado un simulador configurable de fallos.
+- El despacho es una simulación local: `DESPACHADO` indica que existe un dato de contacto para el canal utilizado, no que el mensaje se entregó realmente. `FALLIDO` indica ausencia de correo para EMAIL o de teléfono para SMS/WhatsApp. No se simulan errores externos de proveedores.
 - El selector PDF permite escoger un documento, pero actualmente se registra su identificador o nombre referencial y no el contenido completo del archivo.
 - Los apoderados no utilizan la aplicación directamente.
 - No se implementa firma digital ni captura de firmas.
@@ -238,7 +243,11 @@ A diferencia del proyecto base inicial, el equipo implementó la lógica funcion
 
 ---
 
-## Recurso nativo de Android — Criterio G6
+## Recursos nativos de Android — Criterio G6
+
+Se implementaron dos recursos nativos: selector de documentos PDF y notificaciones locales.
+
+### Recurso 1: selector nativo de PDF
 
 Se implementó el selector nativo de documentos mediante:
 
@@ -261,6 +270,17 @@ Se utiliza el selector del sistema Android, sin solicitar permisos innecesarios 
 
 **Alcance actual:** se conserva una referencia textual del documento, no una copia persistente del PDF.
 
+### Recurso 2: notificación local
+
+Se implementó una notificación del sistema mediante `NotificacionLocal.kt`, con `NotificationChannel` en las versiones que lo requieren.
+
+1. El usuario confirma el comunicado.
+2. El ViewModel registra el comunicado y los resultados del despacho simulado en Room.
+3. Si el guardado fue exitoso, la aplicación muestra una notificación local con el asunto.
+4. En Android 13 o superior, cuando corresponde, solicita el permiso `POST_NOTIFICATIONS`.
+
+**Alcance actual:** la notificación confirma el registro local del comunicado. No indica una entrega real a los apoderados. Si el permiso es rechazado, el comunicado igualmente permanece guardado.
+
 ---
 
 ## Animaciones y componentes interactivos — Criterio G7
@@ -273,7 +293,7 @@ En la pantalla `RedactarComunicadoScreen`, al activar la casilla:
 
 **"Es una autorización que requiere firma física del apoderado"**
 
-aparece una tarjeta informativa.
+Aparece una tarjeta informativa.
 
 Al desmarcar la casilla, la tarjeta desaparece.
 
@@ -287,6 +307,8 @@ Las transiciones utilizadas son:
 Se utilizan transiciones de aproximadamente 300 ms al aparecer y 250 ms al desaparecer.
 
 Esta animación mejora la experiencia del usuario porque presenta información adicional únicamente cuando corresponde.
+
+Cuando se marca la casilla, el despacho utiliza el canal EMAIL y el cuerpo guardado incorpora al final una indicación de firma en papel y entrega al establecimiento. La aplicación no captura firmas digitales.
 
 La aplicación utiliza además componentes interactivos de Material 3, como campos de texto, listas desplegables, casillas, botones y cuadros de diálogo.
 
@@ -352,6 +374,23 @@ Archivo:
 
 Las pruebas de Room utilizan una base de datos temporal en memoria para no modificar los datos normales de la aplicación.
 
+### Pruebas automatizadas del despacho simulado
+
+Archivo:
+
+`app/src/androidTest/java/com/mpaznotifica/app/DespachoSimuladoTest.kt`
+
+| Prueba | Resultado |
+|---|---|
+| EMAIL con correo | `DESPACHADO` |
+| EMAIL sin correo | `FALLIDO` |
+| SMS con teléfono | `DESPACHADO` |
+| SMS sin teléfono | `FALLIDO` |
+| WHATSAPP con teléfono | `DESPACHADO` |
+| WHATSAPP sin teléfono | `FALLIDO` |
+
+**Resultado:** 6/6 pruebas aprobadas. Estas pruebas verifican la lógica del simulador; aún no constituyen una prueba de integración que confirme la persistencia de un `FALLIDO` en Room.
+
 ### Resumen de pruebas
 
 | Categoría | Aprobadas |
@@ -360,7 +399,8 @@ Las pruebas de Room utilizan una base de datos temporal en memoria para no modif
 | Adicionales de casos límite | 5 |
 | Automatizadas del ViewModel | 5 |
 | Automatizadas de Room | 5 |
-| **Total** | **35** |
+| Automatizadas del despacho simulado | 6 |
+| **Total** | **41** |
 
 Las pruebas fueron ejecutadas en Android Studio utilizando un emulador Pixel 10 Pro XL.
 
@@ -378,8 +418,8 @@ Se conserva el orden de trabajo propuesto originalmente, indicando los avances.
 4. **Envío:**
     - Registrar el comunicado: implementado.
     - Resolver los destinatarios: implementado.
-    - Simular el despacho por canal preferente: implementado.
-    - Incluir autorizaciones: implementado como aviso informativo.
+    - Simular el despacho por canal preferente: implementado, con estados `DESPACHADO` y `FALLIDO` por disponibilidad de contacto.
+    - Incluir autorizaciones: aviso informativo y texto de firma en papel incorporado al cuerpo.
 5. **Historial:** filtros por fecha, tipo y emisor implementados.
 6. **Canal preferente:** guardado mediante Room.
 7. **Persistencia y API:**
@@ -387,8 +427,9 @@ Se conserva el orden de trabajo propuesto originalmente, indicando los avances.
     - Servicio externo Retrofit: no utilizado en el MVP actual; integración pendiente de confirmación con el CITT.
 8. **Cierre:**
     - Botones de Modo desarrollo retirados de la interfaz.
-    - Revisar los `TODO(equipo)` originales y documentar cuáles fueron resueltos.
-    - Logo y colores provisionales conservados del proyecto base.
+    - Comentarios pendientes de la plantilla revisados y documentación actualizada en Kotlin, XML y README.
+    - Logo y colores de la propuesta académica conservados, sin atribuir carácter oficial a la paleta.
+    - Segundo recurso nativo incorporado: notificación local al registrar comunicados.
 
 ---
 
@@ -448,12 +489,15 @@ MPAZ Notifica cuenta actualmente con:
 - Inicio de sesión funcional.
 - Permisos diferenciados entre Inspectoría General y Profesor Jefe.
 - Redacción y validación de comunicados.
-- Simulación de despacho por canales.
+- Simulación de despacho por canales, con estados `DESPACHADO` y `FALLIDO`.
 - Historial con filtros.
 - Trazabilidad por destinatario.
 - Persistencia local mediante Room.
 - Configuración persistente del canal preferente.
 - Selector nativo de documentos PDF.
+- Notificación local del sistema Android tras el guardado exitoso.
+- Profesor Jefe autorizado a comunicarse con su curso y apoderados individuales de ese curso.
+- Texto de firma en papel incorporado a las autorizaciones correspondientes.
 - Animación informativa para autorizaciones con firma física.
 - Pruebas manuales y automatizadas ejecutadas correctamente.
 

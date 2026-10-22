@@ -38,28 +38,61 @@ import com.mpaznotifica.app.R
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
 
 /**
- * Módulo "Autenticación y perfiles": login diferenciado para Inspectoría General y
- * Profesor/a Jefe. El apoderado no inicia sesión (no opera la app).
+ * Pantalla de autenticación de MPAZ Notifica.
  *
- * La pantalla está completa, pero viewModel.login() es TODO(equipo): por ahora siempre
- * rechaza. Mientras tanto, los botones "Modo desarrollo" permiten entrar con cada perfil.
+ * Permite iniciar sesión con dos perfiles:
+ * - Inspectoría General.
+ * - Profesor/a Jefe.
  *
- * Usuarios de prueba (MockData.usuarios):
- *   inspectoria@mpaznotifica.cl / inspectoria123
- *   profesor.4basicoA@mpaznotifica.cl / profesor123
+ * El apoderado no inicia sesión ni opera la aplicación.
+ *
+ * Las credenciales ficticias se validan mediante
+ * login() del MpazNotificaViewModel utilizando
+ * los usuarios definidos en MockData.
+ *
+ * Validaciones:
+ * - Correo institucional obligatorio.
+ * - Contraseña obligatoria.
+ * - Credenciales incorrectas.
+ *
+ * La pantalla muestra los mensajes de error
+ * proporcionados por el ViewModel mediante StateFlow.
+ *
+ * No permite el ingreso mediante modo desarrollo.
+ *
+ * Credenciales de demostración:
+ * Inspectoría:
+ * inspectoria@mpaznotifica.cl / inspectoria123
+ *
+ * Profesor Jefe:
+ * profesor.4basicoA@mpaznotifica.cl / profesor123
  */
 @Composable
 fun LoginScreen(
     viewModel: MpazNotificaViewModel,
     onIngresar: () -> Unit
 ) {
-    var usuario by remember { mutableStateOf("") }
-    var clave by remember { mutableStateOf("") }
-    var claveVisible by remember { mutableStateOf(false) }
 
+    // Campos del formulario.
+    var usuario by remember {
+        mutableStateOf("")
+    }
+
+    var clave by remember {
+        mutableStateOf("")
+    }
+
+    // Controla si la contraseña se muestra u oculta.
+    var claveVisible by remember {
+        mutableStateOf(false)
+    }
+
+    // Observa los errores de autenticación
+    // publicados por el ViewModel.
     val error by viewModel.errorLogin.collectAsState()
 
     Scaffold { padding ->
+
         Column(
             modifier = Modifier
                 .padding(padding)
@@ -70,27 +103,40 @@ fun LoginScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
+            // Logotipo de la aplicación.
             Image(
-                painter = painterResource(id = R.drawable.logo_app),
-                contentDescription = "Logo",
+                painter = painterResource(
+                    id = R.drawable.logo_app
+                ),
+                contentDescription = "Logo de MPAZ Notifica",
                 modifier = Modifier.size(110.dp)
             )
 
+            // Nombre de la aplicación.
             Text(
-                "MPAZ Notifica",
+                text = "MPAZ Notifica",
                 style = MaterialTheme.typography.headlineMedium
             )
 
+            // Descripción del acceso.
             Text(
-                "Ingreso de personal docente y directivo",
+                text = "Ingreso de personal docente y directivo",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // =================================================
+            // CORREO INSTITUCIONAL
+            // =================================================
+
             OutlinedTextField(
                 value = usuario,
-                onValueChange = { usuario = it },
-                label = { Text("Correo institucional") },
+                onValueChange = {
+                    usuario = it
+                },
+                label = {
+                    Text("Correo institucional")
+                },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Email
                 ),
@@ -98,10 +144,18 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // =================================================
+            // CONTRASEÑA
+            // =================================================
+
             OutlinedTextField(
                 value = clave,
-                onValueChange = { clave = it },
-                label = { Text("Clave de acceso") },
+                onValueChange = {
+                    clave = it
+                },
+                label = {
+                    Text("Clave de acceso")
+                },
                 singleLine = true,
                 visualTransformation = if (claveVisible) {
                     VisualTransformation.None
@@ -112,9 +166,14 @@ fun LoginScreen(
                     keyboardType = KeyboardType.Password
                 ),
                 trailingIcon = {
+
+                    // Permite mostrar u ocultar la contraseña.
                     IconButton(
-                        onClick = { claveVisible = !claveVisible }
+                        onClick = {
+                            claveVisible = !claveVisible
+                        }
                     ) {
+
                         Icon(
                             imageVector = if (claveVisible) {
                                 Icons.Filled.VisibilityOff
@@ -132,27 +191,44 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // =================================================
+            // MENSAJES DE ERROR
+            // =================================================
+
             if (error != null) {
+
                 Text(
-                    error.orEmpty(),
+                    text = error.orEmpty(),
                     color = MaterialTheme.colorScheme.error
                 )
             }
 
+            // =================================================
+            // BOTÓN INGRESAR
+            // =================================================
+
             Button(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    if (viewModel.login(usuario.trim(), clave)) {
+
+                    // Valida las credenciales mediante
+                    // el ViewModel antes de ingresar.
+                    val accesoPermitido = viewModel.login(
+                        usuario = usuario.trim(),
+                        clave = clave
+                    )
+
+                    if (accesoPermitido) {
+
+                        // Navega al panel principal
+                        // cuando las credenciales son válidas.
                         onIngresar()
                     }
                 }
             ) {
+
                 Text("Ingresar")
             }
-
-            // ---- SOLO PARA DESARROLLO ---- TODO(equipo): eliminar antes de entregar.
-            // Resuelto por el equipo: se eliminaron los botones de acceso
-            // sin credenciales. Ahora se utiliza únicamente el login validado.
         }
     }
 }

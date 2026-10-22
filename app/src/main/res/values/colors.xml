@@ -1,8 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Colores PROVISIONALES (logo e ícono). TODO(equipo): reemplazar por los oficiales
-         y mantenerlos iguales a ui/theme/Theme.kt. -->
+
+    <!--
+        Paleta de colores de MPAZ Notifica.
+
+        Los colores actuales fueron definidos para
+        la versión académica del proyecto.
+
+        Azul MPAZ:
+        Color principal utilizado en la aplicación.
+
+        Naranjo:
+        Color secundario para elementos destacados.
+
+        Blanco:
+        Color de apoyo para recursos gráficos.
+
+        Los valores de azul y naranjo coinciden
+        con los utilizados en ui/theme/Theme.kt.
+
+        Esta paleta no representa necesariamente
+        los colores oficiales del establecimiento.
+        Si el CITT proporciona una identidad visual
+        oficial, se actualizarán ambos archivos.
+    -->
+
     <color name="marca_azul">#FF0D47A1</color>
     <color name="marca_naranjo">#FFEF6C00</color>
     <color name="marca_blanco">#FFFFFFFF</color>
+
 </resources>

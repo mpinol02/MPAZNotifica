@@ -27,18 +27,46 @@ import com.mpaznotifica.app.ui.components.SelectorDesplegable
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
 
 /**
- * Apoderados (destinatarios) con sus pupilos y su canal preferente de despacho. Criterio de
- * éxito del caso: la emisión simulada se hace al canal preferente del apoderado.
+ * Pantalla de apoderados y canales preferentes de despacho.
  *
- * Pendiente con el CITT: si existe una pantalla para configurar el canal o se usa un valor fijo.
- * TODO(equipo): actualizarCanalPreferente() todavía no guarda el cambio.
- * Solo datos ficticios.
+ * Permite consultar los datos ficticios de cada apoderado,
+ * incluyendo su nombre, correo, teléfono y estudiantes asociados.
+ *
+ * El usuario puede seleccionar y guardar el canal preferente
+ * de comunicación: correo electrónico, SMS o WhatsApp.
+ *
+ * Persistencia:
+ * - actualizarCanalPreferente() solicita el cambio al ViewModel.
+ * - ApoderadoRepository guarda el canal seleccionado en Room.
+ * - StateFlow y collectAsState() actualizan la interfaz.
+ *
+ * El despacho de comunicados es simulado.
+ * No se envían mensajes reales a los apoderados.
+ *
+ * La configuración del canal preferente se implementó
+ * como funcionalidad del proyecto utilizando datos ficticios.
+ * Su disponibilidad por perfil puede requerir confirmación
+ * con el CITT.
  */
 @Composable
-fun ApoderadosScreen(navController: NavHostController, viewModel: MpazNotificaViewModel) {
+fun ApoderadosScreen(
+    navController: NavHostController,
+    viewModel: MpazNotificaViewModel
+) {
+
+    // Observar los apoderados desde el ViewModel.
+    // Los cambios guardados en Room actualizan esta lista.
     val apoderados by viewModel.apoderados.collectAsState()
 
-    Scaffold(topBar = { BarraSuperior("Apoderados", navController) }) { padding ->
+    Scaffold(
+        topBar = {
+            BarraSuperior(
+                "Apoderados",
+                navController
+            )
+        }
+    ) { padding ->
+
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
@@ -46,28 +74,80 @@ fun ApoderadosScreen(navController: NavHostController, viewModel: MpazNotificaVi
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+
             items(apoderados) { apoderado ->
-                var canal by remember(apoderado.id, apoderado.canalPreferente) { mutableStateOf(apoderado.canalPreferente) }
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(apoderado.nombreCompleto, style = MaterialTheme.typography.titleSmall)
-                        Text("${apoderado.correo} · ${apoderado.telefono}", style = MaterialTheme.typography.bodySmall)
+
+                // Estado local de la selección.
+                // Se sincroniza con el canal observado desde Room.
+                var canal by remember(
+                    apoderado.id,
+                    apoderado.canalPreferente
+                ) {
+                    mutableStateOf(
+                        apoderado.canalPreferente
+                    )
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+
+                        // Nombre del apoderado.
                         Text(
-                            "Pupilos: " + viewModel.nombresPupilos(apoderado).joinToString(", ").ifBlank { "sin pupilos" },
+                            text = apoderado.nombreCompleto,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+
+                        // Datos de contacto ficticios.
+                        Text(
+                            text = "${apoderado.correo} · ${apoderado.telefono}",
                             style = MaterialTheme.typography.bodySmall
                         )
+
+                        // Estudiantes relacionados con el apoderado.
+                        Text(
+                            text = "Pupilos: " +
+                                    viewModel.nombresPupilos(apoderado)
+                                        .joinToString(", ")
+                                        .ifBlank { "sin pupilos" },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        // Seleccionar el canal preferente.
                         SelectorDesplegable(
                             etiqueta = "Canal preferente",
                             opciones = CanalDespacho.entries,
                             seleccion = canal,
-                            textoDe = { it.etiqueta },
-                            onSeleccion = { canal = it }
+                            textoDe = {
+                                it.etiqueta
+                            },
+                            onSeleccion = {
+                                canal = it
+                            }
                         )
+
+                        // Guardar el cambio mediante el ViewModel.
+                        // El botón solo está habilitado cuando
+                        // el canal seleccionado es diferente
+                        // del que actualmente está guardado.
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
                             enabled = canal != apoderado.canalPreferente,
-                            onClick = { viewModel.actualizarCanalPreferente(apoderado.id, canal) }
-                        ) { Text("Guardar canal") }
+                            onClick = {
+                                viewModel.actualizarCanalPreferente(
+                                    apoderado.id,
+                                    canal
+                                )
+                            }
+                        ) {
+
+                            Text("Guardar canal")
+                        }
                     }
                 }
             }
