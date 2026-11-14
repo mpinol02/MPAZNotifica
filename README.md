@@ -404,7 +404,6 @@ Archivo:
 
 Las pruebas fueron ejecutadas en Android Studio utilizando un emulador Pixel 10 Pro XL.
 
-Estos resultados corresponden a las verificaciones realizadas por el equipo y no sustituyen la evaluación técnica del profesor.
 
 ---
 
@@ -500,5 +499,3 @@ MPAZ Notifica cuenta actualmente con:
 - Texto de firma en papel incorporado a las autorizaciones correspondientes.
 - Animación informativa para autorizaciones con firma física.
 - Pruebas manuales y automatizadas ejecutadas correctamente.
-
-El proyecto está preparado para la revisión final, la entrega académica y la defensa individual, sujeto a las comprobaciones de GitHub, identificación de integrantes y empaquetado final.
