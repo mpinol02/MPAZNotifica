@@ -432,7 +432,11 @@ class MpazNotificaViewModel(
         alcance: AlcanceEnvio,
         destino: String?,
         adjuntoPdfNombre: String?,
-        requiereFirmaFisica: Boolean
+        requiereFirmaFisica: Boolean,
+        // Opcionales: la pantalla genera el id para poder nombrar la copia
+        // del PDF y para que la notificación abra este comunicado.
+        comunicadoId: String = UUID.randomUUID().toString(),
+        adjuntoPdfRuta: String? = null
     ): Boolean {
 
         // Validar primero el formulario y los permisos.
@@ -512,9 +516,6 @@ class MpazNotificaViewModel(
             return false
         }
 
-        val comunicadoId =
-            UUID.randomUUID().toString()
-
         val fechaActual = SimpleDateFormat(
             "yyyy-MM-dd HH:mm",
             Locale.ROOT
@@ -545,6 +546,7 @@ class MpazNotificaViewModel(
             alcance = alcance,
             destinoReferencia = destino,
             adjuntoPdfNombre = adjuntoPdfNombre,
+            adjuntoPdfRuta = adjuntoPdfRuta,
             requiereFirmaFisica = requiereFirmaFisica,
             autorId = usuario.id,
             autorNombre = usuario.nombre,

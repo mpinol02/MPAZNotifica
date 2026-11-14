@@ -1,6 +1,7 @@
 
 package com.mpaznotifica.app.ui.screen.comunicados
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,8 +20,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.mpaznotifica.app.AdjuntoPdf
 import com.mpaznotifica.app.model.EstadoEnvio
 import com.mpaznotifica.app.ui.components.BarraSuperior
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
@@ -36,6 +40,8 @@ fun DetalleComunicadoScreen(
     navController: NavHostController,
     viewModel: MpazNotificaViewModel
 ) {
+
+    val context = LocalContext.current
 
     val seleccionadoId by
     viewModel.comunicadoSeleccionadoId.collectAsState()
@@ -128,6 +134,51 @@ fun DetalleComunicadoScreen(
                         "Adjunto: " +
                                 (comunicado.adjuntoPdfNombre ?: "sin adjunto")
                     )
+
+                    // Persistencia del PDF: se abre la copia guardada en la app.
+                    if (comunicado.adjuntoPdfNombre != null) {
+
+                        val ruta = comunicado.adjuntoPdfRuta
+
+                        if (ruta != null) {
+
+                            OutlinedButton(
+                                onClick = {
+
+                                    val mensaje = when (
+                                        AdjuntoPdf.abrir(context, ruta)
+                                    ) {
+                                        AdjuntoPdf.ResultadoApertura.ABIERTO ->
+                                            null
+
+                                        AdjuntoPdf.ResultadoApertura.SIN_VISOR ->
+                                            "No hay una app instalada para abrir PDF."
+
+                                        AdjuntoPdf.ResultadoApertura.ARCHIVO_NO_DISPONIBLE ->
+                                            "El archivo PDF ya no está disponible."
+                                    }
+
+                                    if (mensaje != null) {
+                                        Toast.makeText(
+                                            context,
+                                            mensaje,
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            ) {
+                                Text("Abrir PDF")
+                            }
+
+                        } else {
+
+                            Text(
+                                "El archivo no se guardó en este dispositivo " +
+                                        "(comunicado anterior).",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
 
                     if (comunicado.requiereFirmaFisica) {
                         Text(
