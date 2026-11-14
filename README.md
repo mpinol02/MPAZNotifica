@@ -112,7 +112,7 @@ Ruta principal:
 | `ui/components/` | `BarraSuperior` y `SelectorDesplegable`. |
 | `ui/screen/` | Pantallas de login, panel, comunicados, historial, detalle y apoderados. |
 | `ui/theme/` y `res/` | Tema, colores, logo e ícono del proyecto. |
-| Raíz del paquete | `NotificacionLocal.kt`: segundo recurso nativo de Android. |
+| Raíz del paquete | `NotificacionLocal.kt`: segundo recurso nativo de Android; `AdjuntoPdf.kt`: copia, ubicación y apertura de los PDF adjuntos. |
 
 ### Persistencia local con Room
 
@@ -132,7 +132,7 @@ Los archivos utilizados para la persistencia incluyen:
 
 Se conserva `PersistenciaPendiente.kt` como documentación actualizada a partir de la guía original del profesor.
 
-El esquema de Room utiliza una migración de la versión 2 a la 3 para agregar los apoderados sin eliminar los comunicados previamente almacenados en esa ruta de actualización.
+El esquema de Room utiliza una migración de la versión 2 a la 3 para agregar los apoderados y otra de la 3 a la 4 para agregar la ruta del PDF (`adjuntoPdfRuta`), sin eliminar los comunicados previamente almacenados en esas rutas de actualización.
 
 ---
 
@@ -236,7 +236,7 @@ A diferencia del proyecto base inicial, el equipo implementó la lógica funcion
 - No se envían mensajes reales por correo, SMS ni WhatsApp.
 - Los destinatarios utilizados son ficticios.
 - El despacho es una simulación local: `DESPACHADO` indica que existe un dato de contacto para el canal utilizado, no que el mensaje se entregó realmente. `FALLIDO` indica ausencia de correo para EMAIL o de teléfono para SMS/WhatsApp. No se simulan errores externos de proveedores.
-- El selector PDF permite escoger un documento, pero actualmente se registra su identificador o nombre referencial y no el contenido completo del archivo.
+- El PDF adjunto se copia al almacenamiento interno de la app (máximo 10 MB). Los comunicados registrados antes de la Evaluación 3 solo conservan el nombre del archivo, sin copia.
 - Los apoderados no utilizan la aplicación directamente.
 - No se implementa firma digital ni captura de firmas.
 - No se requiere conexión con sistemas escolares reales.
@@ -259,7 +259,7 @@ Se implementó el selector nativo de documentos mediante:
 2. Presiona **Adjuntar PDF (opcional)**.
 3. Android muestra el selector de documentos.
 4. El usuario selecciona un PDF.
-5. La aplicación muestra una referencia del documento seleccionado.
+5. La aplicación muestra el nombre del documento seleccionado.
 6. El usuario puede cambiar o quitar el adjunto.
 
 ### Justificación
@@ -268,7 +268,7 @@ El recurso es pertinente para MPAZ Notifica porque los comunicados escolares pue
 
 Se utiliza el selector del sistema Android, sin solicitar permisos innecesarios de cámara, micrófono o ubicación.
 
-**Alcance actual:** se conserva una referencia textual del documento, no una copia persistente del PDF.
+**Alcance actual (Evaluación 3):** al enviar el comunicado, el PDF se copia a `filesDir/adjuntos/` y la ruta se guarda en Room (`adjuntoPdfRuta`). Desde el detalle del comunicado se vuelve a abrir con el botón **Abrir PDF**.
 
 ### Recurso 2: notificación local
 
@@ -279,7 +279,26 @@ Se implementó una notificación del sistema mediante `NotificacionLocal.kt`, co
 3. Si el guardado fue exitoso, la aplicación muestra una notificación local con el asunto.
 4. En Android 13 o superior, cuando corresponde, solicita el permiso `POST_NOTIFICATIONS`.
 
-**Alcance actual:** la notificación confirma el registro local del comunicado. No indica una entrega real a los apoderados. Si el permiso es rechazado, el comunicado igualmente permanece guardado.
+**Alcance actual (Evaluación 3):** la notificación confirma el registro local del comunicado y, al tocarla, abre el detalle de ese comunicado. No indica una entrega real a los apoderados. Si el permiso es rechazado, el comunicado igualmente permanece guardado.
+
+### Evaluación 3: notificaciones que abren el detalle y persistencia del PDF (Gaspar Ríos)
+
+**Notificación que abre el detalle**
+
+1. Al guardar el comunicado, `NotificacionLocal` crea un `PendingIntent` hacia `MainActivity` con el id del comunicado (`EXTRA_COMUNICADO_ID`).
+2. `MainActivity` es `singleTop`: si la app ya está abierta recibe el Intent en `onNewIntent()`, y si estaba cerrada lo lee en `onCreate()`.
+3. `AppNavigation` espera a que haya sesión iniciada, selecciona el comunicado y navega a `DETALLE`. Si el usuario no ha iniciado sesión, primero ve el login y luego el detalle.
+4. Cada comunicado usa su propio `requestCode`, para que dos notificaciones distintas no abran el mismo detalle.
+
+**Persistencia del PDF**
+
+1. El selector entrega un `Uri` temporal, que deja de servir al cerrar la app.
+2. Al confirmar el envío, `AdjuntoPdf.copiarAInterno()` copia el archivo a `filesDir/adjuntos/<idComunicado>.pdf` (máximo 10 MB, fuera del hilo principal).
+3. Room guarda el nombre visible (`adjuntoPdfNombre`) y la ruta relativa (`adjuntoPdfRuta`, migración 3 → 4).
+4. Si el comunicado no se puede guardar, la copia se elimina.
+5. `DetalleComunicadoScreen` muestra **Abrir PDF**, que comparte el archivo con un visor externo mediante `FileProvider`.
+
+Pruebas nuevas: `NotificacionLocalTest.kt` y `AdjuntoPdfTest.kt` (carpeta `androidTest`).
 
 ---
 

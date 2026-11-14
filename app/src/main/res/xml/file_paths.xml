@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Copias de los PDF adjuntos: filesDir/adjuntos/ -->
+    <files-path
+        name="adjuntos"
+        path="adjuntos/" />
+</paths>
