@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.mpaznotifica.app.AdjuntoPdf
 import com.mpaznotifica.app.NotificacionLocal
 import com.mpaznotifica.app.model.AlcanceEnvio
 import com.mpaznotifica.app.model.ErroresComunicado
@@ -54,6 +55,7 @@ import com.mpaznotifica.app.ui.components.SelectorDesplegable
 import com.mpaznotifica.app.viewmodel.MpazNotificaViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * Pantalla de redacción y envío de comunicados.
@@ -62,11 +64,13 @@ import kotlinx.coroutines.launch
  * - Campos obligatorios y validaciones.
  * - Tipos y alcances según el perfil.
  * - Destinos permitidos por RF-06.
- * - Selector nativo de PDF.
+ * - Selector nativo de PDF (el archivo se copia al almacenamiento
+ *   interno al enviar, para poder abrirlo después desde el detalle).
  * - Aviso animado de firma física.
  * - Confirmación antes del envío.
  * - Guardado mediante el ViewModel y Room.
- * - Notificación local al guardar exitosamente.
+ * - Notificación local al guardar exitosamente; al tocarla se abre
+ *   el detalle del comunicado.
  */
 @Composable
 fun RedactarComunicadoScreen(
@@ -98,8 +102,14 @@ fun RedactarComunicadoScreen(
         mutableStateOf<String?>(null)
     }
 
+    // Nombre legible del PDF elegido (se muestra y se guarda en Room).
     var adjunto by remember {
         mutableStateOf<String?>(null)
+    }
+
+    // Uri temporal entregado por el selector; se copia al enviar.
+    var adjuntoUri by remember {
+        mutableStateOf<Uri?>(null)
     }
 
     var requiereFirma by remember {
@@ -122,8 +132,9 @@ fun RedactarComunicadoScreen(
         mutableStateOf(false)
     }
 
-    var errorEnvio by remember {
-        mutableStateOf(false)
+    // Mensaje del diálogo de error (null = diálogo oculto).
+    var mensajeError by remember {
+        mutableStateOf<String?>(null)
     }
 
     val scrollState = rememberScrollState()
@@ -139,7 +150,8 @@ fun RedactarComunicadoScreen(
     ) { uri: Uri? ->
 
         if (uri != null) {
-            adjunto = uri.lastPathSegment ?: "documento.pdf"
+            adjuntoUri = uri
+            adjunto = AdjuntoPdf.nombreVisible(context, uri)
         }
     }
 
@@ -152,6 +164,10 @@ fun RedactarComunicadoScreen(
      * necesitamos solicitar el permiso de notificaciones.
      */
     var asuntoParaNotificacion by remember {
+        mutableStateOf("")
+    }
+
+    var comunicadoIdParaNotificacion by remember {
         mutableStateOf("")
     }
 
@@ -168,7 +184,8 @@ fun RedactarComunicadoScreen(
 
                 NotificacionLocal.mostrarComunicadoRegistrado(
                     context = context,
-                    asunto = asuntoParaNotificacion
+                    asunto = asuntoParaNotificacion,
+                    comunicadoId = comunicadoIdParaNotificacion
                 )
 
             } else {
@@ -184,9 +201,13 @@ fun RedactarComunicadoScreen(
      * Solo mostramos la notificación cuando
      * Room confirma que el comunicado se guardó.
      */
-    fun notificarGuardado(asuntoGuardado: String) {
+    fun notificarGuardado(
+        asuntoGuardado: String,
+        comunicadoIdGuardado: String
+    ) {
 
         asuntoParaNotificacion = asuntoGuardado
+        comunicadoIdParaNotificacion = comunicadoIdGuardado
 
         val requierePermiso =
             Build.VERSION.SDK_INT >=
@@ -203,7 +224,8 @@ fun RedactarComunicadoScreen(
 
                 NotificacionLocal.mostrarComunicadoRegistrado(
                     context = context,
-                    asunto = asuntoGuardado
+                    asunto = asuntoGuardado,
+                    comunicadoId = comunicadoIdGuardado
                 )
 
             } else {
@@ -217,7 +239,8 @@ fun RedactarComunicadoScreen(
 
             NotificacionLocal.mostrarComunicadoRegistrado(
                 context = context,
-                asunto = asuntoGuardado
+                asunto = asuntoGuardado,
+                comunicadoId = comunicadoIdGuardado
             )
         }
     }
@@ -409,6 +432,7 @@ fun RedactarComunicadoScreen(
                     TextButton(
                         onClick = {
                             adjunto = null
+                            adjuntoUri = null
                         }
                     ) {
                         Text("Quitar")
@@ -569,19 +593,71 @@ fun RedactarComunicadoScreen(
 
                                 val asuntoGuardado = asunto.trim()
 
+                                // El id se define aquí para nombrar la copia
+                                // del PDF y para que la notificación abra
+                                // exactamente este comunicado.
+                                val comunicadoId =
+                                    UUID.randomUUID().toString()
+
+                                // PERSISTENCIA DEL PDF: se copia al
+                                // almacenamiento interno antes de guardar.
+                                var rutaPdf: String? = null
+                                var errorAdjunto: String? = null
+
+                                val uriPdf = adjuntoUri
+
+                                if (uriPdf != null) {
+
+                                    when (
+                                        val copia = AdjuntoPdf.copiarAInterno(
+                                            context = context,
+                                            uri = uriPdf,
+                                            comunicadoId = comunicadoId
+                                        )
+                                    ) {
+
+                                        is AdjuntoPdf.ResultadoCopia.Ok ->
+                                            rutaPdf = copia.ruta
+
+                                        AdjuntoPdf.ResultadoCopia.DemasiadoGrande ->
+                                            errorAdjunto =
+                                                "El PDF supera los " +
+                                                        "${AdjuntoPdf.TAMANO_MAXIMO_BYTES / (1024 * 1024)} MB " +
+                                                        "permitidos. Elige un archivo más liviano."
+
+                                        AdjuntoPdf.ResultadoCopia.Error ->
+                                            errorAdjunto =
+                                                "No se pudo leer el PDF " +
+                                                        "seleccionado. Vuelve a adjuntarlo."
+                                    }
+                                }
+
                                 val guardado = try {
 
-                                    viewModel.enviarComunicado(
-                                        asunto = asuntoGuardado,
-                                        cuerpo = cuerpo.trim(),
-                                        tipo = tipoElegido,
-                                        alcance = alcanceElegido,
-                                        destino = destino,
-                                        adjuntoPdfNombre = adjunto,
-                                        requiereFirmaFisica = requiereFirma
-                                    )
+                                    if (errorAdjunto != null) {
+
+                                        false
+
+                                    } else {
+
+                                        viewModel.enviarComunicado(
+                                            asunto = asuntoGuardado,
+                                            cuerpo = cuerpo.trim(),
+                                            tipo = tipoElegido,
+                                            alcance = alcanceElegido,
+                                            destino = destino,
+                                            adjuntoPdfNombre = adjunto,
+                                            requiereFirmaFisica = requiereFirma,
+                                            comunicadoId = comunicadoId,
+                                            adjuntoPdfRuta = rutaPdf
+                                        )
+                                    }
 
                                 } catch (e: CancellationException) {
+
+                                    rutaPdf?.let {
+                                        AdjuntoPdf.eliminar(context, it)
+                                    }
 
                                     throw e
 
@@ -607,14 +683,25 @@ fun RedactarComunicadoScreen(
                                     // El comunicado ya está en Room.
                                     enviado = true
 
-                                    // Nuevo segundo recurso nativo.
+                                    // Segundo recurso nativo: al tocar
+                                    // el aviso se abre el detalle.
                                     notificarGuardado(
-                                        asuntoGuardado
+                                        asuntoGuardado,
+                                        comunicadoId
                                     )
 
                                 } else {
 
-                                    errorEnvio = true
+                                    // Si no se guardó, no dejar la copia
+                                    // del PDF huérfana.
+                                    rutaPdf?.let {
+                                        AdjuntoPdf.eliminar(context, it)
+                                    }
+
+                                    mensajeError = errorAdjunto
+                                        ?: "Comprueba los datos, " +
+                                        "destinatarios y permisos " +
+                                        "del usuario. Inténtalo nuevamente."
                                 }
                             }
                         }
@@ -683,27 +770,24 @@ fun RedactarComunicadoScreen(
     // ERROR DE GUARDADO
     // =====================================================
 
-    if (errorEnvio) {
+    mensajeError?.let { mensaje ->
 
         AlertDialog(
             onDismissRequest = {
-                errorEnvio = false
+                mensajeError = null
             },
             title = {
                 Text("No se pudo guardar")
             },
             text = {
 
-                Text(
-                    "Comprueba los datos, destinatarios y permisos " +
-                            "del usuario. Inténtalo nuevamente."
-                )
+                Text(mensaje)
             },
             confirmButton = {
 
                 TextButton(
                     onClick = {
-                        errorEnvio = false
+                        mensajeError = null
                     }
                 ) {
 

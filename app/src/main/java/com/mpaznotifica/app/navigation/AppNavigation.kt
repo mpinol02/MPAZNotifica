@@ -1,6 +1,9 @@
 package com.mpaznotifica.app.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -39,8 +42,24 @@ object Rutas {
 @Composable
 fun AppNavigation(
     navController: NavHostController = rememberNavController(),
-    viewModel: MpazNotificaViewModel = viewModel()
+    viewModel: MpazNotificaViewModel = viewModel(),
+    comunicadoPendienteId: String? = null,
+    onComunicadoPendienteAtendido: () -> Unit = {}
 ) {
+    val usuarioActivo by viewModel.usuarioActivo.collectAsState()
+
+    // Notificación tocada: abrir el detalle de ese comunicado.
+    // Si todavía no hay sesión, espera al login y recién entonces navega.
+    LaunchedEffect(comunicadoPendienteId, usuarioActivo) {
+        if (comunicadoPendienteId != null && usuarioActivo != null) {
+            viewModel.seleccionarComunicado(comunicadoPendienteId)
+            navController.navigate(Rutas.DETALLE) {
+                launchSingleTop = true
+            }
+            onComunicadoPendienteAtendido()
+        }
+    }
+
     val cerrarSesion: () -> Unit = {
         viewModel.logout()
         navController.navigate(Rutas.LOGIN) {
