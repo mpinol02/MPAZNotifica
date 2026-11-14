@@ -37,6 +37,8 @@ data class Comunicacion(
     val alcance: AlcanceEnvio,
     val destinoReferencia: String? = null,
     val adjuntoPdfNombre: String? = null,
+    /** Ruta relativa (filesDir) de la copia del PDF; null si no hay copia. */
+    val adjuntoPdfRuta: String? = null,
     val requiereFirmaFisica: Boolean = false,
     val autorId: String,
     val autorNombre: String,

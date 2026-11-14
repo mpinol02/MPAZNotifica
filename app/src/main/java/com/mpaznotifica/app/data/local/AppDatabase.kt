@@ -27,7 +27,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EnvioEntity::class,
         ApoderadoEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -88,6 +88,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migración de versión 3 a versión 4.
+         *
+         * Agrega la ruta de la copia interna del PDF adjunto.
+         * Los comunicados anteriores quedan con la ruta en NULL.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+
+            override fun migrate(db: SupportSQLiteDatabase) {
+
+                db.execSQL(
+                    "ALTER TABLE `comunicaciones` " +
+                            "ADD COLUMN `adjuntoPdfRuta` TEXT"
+                )
+            }
+        }
+
         // Crear o recuperar la instancia de Room.
         fun obtenerInstancia(context: Context): AppDatabase {
 
@@ -98,7 +115,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mpaz_notifica_db"
                 )
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .build()
 
                 INSTANCE = instancia

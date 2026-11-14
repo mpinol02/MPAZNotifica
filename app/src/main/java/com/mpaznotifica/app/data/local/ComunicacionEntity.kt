@@ -31,6 +31,9 @@ data class ComunicacionEntity(
 
     val adjuntoPdfNombre: String?,
 
+    // Ruta relativa de la copia interna del PDF (versión 4 de la BD).
+    val adjuntoPdfRuta: String? = null,
+
     val requiereFirmaFisica: Boolean,
 
     val autorId: String,
